@@ -52,8 +52,8 @@ async def human_type(page, selector, text):
     await asyncio.sleep(random.uniform(0.1, 0.2))
 
     await element.type(text, delay=random.randint(50,150))
-    
-async def RPAexecutioner_Fill(name_surname, collection_type, amount):
+
+async def RPAexecutioner_PaymentPaid(name_surname, collection_type, amount):
     async with Stealth().use_async(async_playwright()) as playwright:
         chromium = playwright.chromium
         
@@ -120,6 +120,74 @@ async def RPAexecutioner_Fill(name_surname, collection_type, amount):
                 
         
         await browser.close()
+
+async def RPAexecutioner_PaymentOwed(name_surname, collection_type, amount):
+    async with Stealth().use_async(async_playwright()) as playwright:
+        chromium = playwright.chromium
+        
+        browser = await chromium.launch(headless=False)
+        
+        context = await browser.new_context()
+        
+        page = await context.new_page()
+        
+        response = await page.goto("https://kurs.goldennet.com.tr/giris.php")
+        
+        await human_type(page, "#kurumkodu", os.getenv("institution_code"))
+        await asyncio.sleep(random.uniform(0.7, 1.9))
+        
+        await human_type(page, "#kullaniciadi", os.getenv("login"))
+        await asyncio.sleep(random.uniform(1.1, 3.2))
+        
+        await human_type(page, "#kullanicisifresi", os.getenv("password"))
+        await asyncio.sleep(random.uniform(0.9, 3.1))
+        
+        await human_button_click(page, "#btngiris")
+        
+        await asyncio.sleep(random.uniform(1.5, 4.1))
+        
+        await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
+        
+        await asyncio.sleep(random.uniform(1.7, 3.7))
+        
+        await human_type(page, "#txtaraadi", name_surname)
+        
+        await asyncio.sleep(random.uniform(0.8, 1.8))
+        
+        await page.keyboard.press("Enter")
+        
+        await asyncio.sleep(random.uniform(1.7, 3.7))
+        
+        await human_button_click(page, "a", has_text=name_surname)
+        
+        await asyncio.sleep(random.uniform(1.7, 3.7))
+        
+        await human_button_click(page, "a:visible", has_text="ÖDEME")
+
+        await asyncio.sleep(random.uniform(0.8, 1.8))
+        
+        await human_button_click(page, "#btnyeniborc")
+        
+        await asyncio.sleep(random.uniform(1.1, 3.7))
+        
+        await human_option_select(page, "#yeniborc_borctipi", collection_type)
+        
+        await asyncio.sleep(random.uniform(0.9, 3.1))
+        
+        await human_type(page, "#yeniborc_tutar", str(amount))
+        
+        await asyncio.sleep(random.uniform(0.7, 2.1))
+        
+        await human_button_click(page, "button.btn-success:visible", has_text="KAYDET")
+        
+        await asyncio.sleep(random.uniform(1.6, 3.1))
+        
+        is_bot = await page.evaluate("navigator.webdriver")
+        
+        print(f"Am I a bot? {is_bot}")
+                
+        
+        await browser.close()
         
     
-asyncio.run(RPAexecutioner_Fill("ANIL KUŞ", "UYGULAMA SINAV HARCI", 1200))
+asyncio.run(RPAexecutioner_PaymentOwed("Onur Çelik YZ Test", "TAKSİT", 6000))

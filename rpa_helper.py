@@ -65,7 +65,26 @@ async def get_human_name(description):
     
     return response['message']['content']
 
+async def image_ocr(screenshot):
+    reader = easyocr.Reader(['tr', 'en'])
 
+    # 1. Read and Sort by Y (vertical position) first to group lines
+    results = sorted(reader.readtext(screenshot), key=lambda r: r[0][0][1])
+
+    rows = []
+    for bbox, text, _ in results:
+        # Get coordinates (Top-Left)
+        top_left = bbox[0]
+        x, y = top_left[0], top_left[1]
+        
+        # 2. Group by Row (Y proximity)
+        # We store (x, text) tuples now, so we can sort them left-to-right later
+        if not rows or abs(y - rows[-1][0]) > 10:
+            rows.append([y, [(x, text)]])
+        else:
+            rows[-1][1].append((x, text))
+
+    return rows
 async def get_payment_type(page, name_surname, description, payment_amount):
 
     await human_type(page, "#txtaraadi", name_surname)
@@ -83,24 +102,101 @@ async def get_payment_type(page, name_surname, description, payment_amount):
     await human_button_click(page, "a:visible", has_text="ÖDEME")
 
     #TODO take a very specific cropped screenshot of the billing area, we will give to an OCR Algorithm
-    await page.screenshot(path="screenshot.png")
+    await page.screenshot(path="screenshotv2.png")
 
     await asyncio.sleep(random.uniform(0.8, 1.8))
 
     await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
 
-    #1600 uygulama sinav harci
-    #1200 yazili sinav
-    #1000 saglik belge ucreti
-    #2000 ozel ders fiyatlandirma, genelde 2 ders aliniyor,
-    #basarisiz aday egitimi 4000
-    #taksit 
+    payments_info = image_ocr("screenshotv3.png")
+
+    payment_types = []
+    to_be_paid = []
+    payment_owed = []
+    payments_paid = []
+
+    for row in payments_info:
+        if len(row) < 2:
+            continue
+        if "ÖDEDİ" in row:
+            payments_paid.append(row[1])
+        else: 
+            to_be_paid.append(row[-1])
+            payment_owed.append(row[1])
+
+    #SET KURALLAR:
+    if payment_amount == 1200:
+        if "YAZILI SINAV HARCI" in payment_owed:
+            payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+            return payment_types
+        else: 
+            payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
+            return payment_types
+    if payment_amount == 1600:
+        if "UYGULAMA SINAV HARCI" in payment_owed:
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+            return payment_types
+        else: 
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
+            return payment_types
+    if payment_amount == 900:
+        if "YAZILI SINAV HARCI" in payment_owed:
+            payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+            return payment_types
+        else: 
+            payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
+            return payment_types
+    if payment_amount == 1350:
+        if "UYGULAMA SINAV HARCI" in payment_owed:
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+            return payment_types
+        else: 
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
+            return payment_types
     
+    if payment_amount == 4000 and "BAŞARISIZ ADAY EĞİTİMİ" in payment_owed:
+        payment_types.append(["BAŞARISIZ ADAY EĞİTİMİ", "BORC VAR"])
+        return payment_types
 
+    if payment_amount == 4000 and "ÖZEL DERS" in payment_owed:
+        payment_types.append(["ÖZEL DERS", "BORC VAR"])
+        return payment_types
 
-    return response['message']['content']
+    payment_copy = payment_amount
 
+    if payment_amount == 2000 and "BELGE ÜCRETİ" in payment_owed:
+        payment_types.append(["BELGE ÜCRETİ", "BORC VAR"])
+        payment_types.append(["TAKSİT", "BORC VAR"])
+        return payment_types
 
-reader = easyocr.Reader(['tr', 'en']) # 'tr' for Turkish support
-result = reader.readtext('screenshot.png', detail=0)
-print(result)
+    if payment_copy > 1600:
+        if (payment_copy - 1600)%500 == 0 and payment_copy - 1600 != 4000:
+            if "UYG. SNV. HARCI" in payment_owed and "YZL. SNV. HARCI" in payments_paid:
+                payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
+            elif "YZL. SNV. HARCI" in payment_owed:
+                payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
+        elif (payment_copy - 1600)%500 == 0 and payment_copy - 1600 == 4000:
+            if "UYG. SNV. HARCI" in payment_owed and "YZL. SNV. HARCI" in payments_paid:
+                payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+                payment_types.append(["DORTBIN", "FLAG: 4000"])
+            elif "YZL. SNV. HARCI" in payment_owed:
+                payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
+                payment_types.append(["DORTBIN", "FLAG: 4000"])
+        if (payment_copy - 1200)%500 == 0 and payment_copy - 1200 != 4000:
+            if "YZL. SNV. HARCI" in payment_owed:
+                payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
+            else:
+                payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
+        elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 == 4000:
+            if "YZL. SNV. HARCI" in payment_owed:
+                payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+                payment_types.append(["DORTBIN", "FLAG: 4000"])
+            else:
+                payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
+                payment_types.append(["DORTBIN", "FLAG: 4000"])
+
+    return payment_types

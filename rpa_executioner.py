@@ -11,7 +11,7 @@ from rpa_helper import human_option_select, human_button_click, human_type, get_
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import dotenv
-
+import easyocr
 dotenv.load_dotenv()
 
 
@@ -146,7 +146,7 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
 
             payment_type = get_payment_type(page, name_surname,payment_information[0][i],payment_information[1][i])
 
-        
+            
         
         
         is_bot = await page.evaluate("navigator.webdriver")

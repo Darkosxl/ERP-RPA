@@ -16,23 +16,7 @@ dotenv.load_dotenv()
 
 
 
-async def golden_PaymentPaid(page, name_surname, collection_type, amount):
-
-    await human_type(page, "#txtaraadi", name_surname)
-
-    await asyncio.sleep(random.uniform(0.8, 1.8))
-
-    await page.keyboard.press("Enter")
-
-    await asyncio.sleep(random.uniform(1.7, 3.7))
-
-    await human_button_click(page, "a", has_text=name_surname)
-
-    await asyncio.sleep(random.uniform(1.7, 3.7))
-    
-    await human_button_click(page, "a:visible", has_text="ÖDEME")
-
-    await asyncio.sleep(random.uniform(0.8, 1.8))
+async def golden_PaymentPaid(page, collection_type, amount):
     
     await human_button_click(page, "#btnyeniodeme")
     
@@ -44,31 +28,15 @@ async def golden_PaymentPaid(page, name_surname, collection_type, amount):
     
     await human_type(page, "#yenitahsilat_tutar", str(amount))
     
-    await asyncio.sleep(random.uniform(0.7, 2.1))
+    await asyncio.sleep(random.uniform(11.1, 14.1))
     
     await human_button_click(page, "button", has_text="ÖDETTİR")
     
     await asyncio.sleep(random.uniform(1.6, 3.1))
     
-    is_bot = await page.evaluate("navigator.webdriver")
+   
 
-async def golden_PaymentOwed(page, name_surname, collection_type, amount):
-    
-    await human_type(page, "#txtaraadi", name_surname)
-
-    await asyncio.sleep(random.uniform(0.8, 1.8))
-
-    await page.keyboard.press("Enter")
-
-    await asyncio.sleep(random.uniform(1.7, 3.7))
-
-    await human_button_click(page, "a", has_text=name_surname)
-
-    await asyncio.sleep(random.uniform(1.7, 3.7))
-
-    await human_button_click(page, "a:visible", has_text="ÖDEME")
-
-    await asyncio.sleep(random.uniform(0.8, 1.8))
+async def golden_PaymentOwed(page, collection_type, amount):
     
     await human_button_click(page, "#btnyeniborc")
     
@@ -145,7 +113,8 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
         
 
         payment_information = await RPAexecutioner_readfile(filename, sheetname)
-
+        prev_human_name = ""
+        search_new_person = True
         for i in range(len(payment_information[0])):
             
             if "-" in str(payment_information[1][i]):
@@ -166,24 +135,68 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
                 print("name found: " + name_surname)
 
             print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
-            payment_type = await get_payment_type(page, name_surname,payment_information[1][i])
+            payment_type = await get_payment_type(page, name_surname,payment_information[1][i], search_new_person)
             print(f"Payment type result: {payment_type}")
+            
+            # Sort so TAKSİT is always last
+            payment_type.sort(key=lambda x: 1 if x[0] == "TAKSİT" else 0)
+            
+            total_paid = payment_information[1][i]
+            
             for info in payment_type:
                 print(f"Processing info: {info}")
                 if info[1] == "FLAG: 4000":
                     payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "FLAG: 4000"])
                     print("Payment amount is 4000, skipping")
                 if info[1] == "BORC VAR":
-                    print(f"Initiating payment: {name_surname}, {info[0]}, {payment_information[1][i]}")
-                    await golden_PaymentPaid(page, name_surname, info[0], payment_information[1][i])
-                    print("Payment completed.")
-                    await asyncio.sleep(random.uniform(2.1, 3.1))
+                    if info[0] == "UYGULAMA SINAV HARCI":
+                        print(f"Initiating payment: {name_surname}, {info[0]}, {1600}")
+                        await golden_PaymentPaid(page, info[0], 1600)
+                        print("Payment completed.")
+                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                        total_paid -= 1600
+                    if info[0] == "YAZILI SINAV HARCI":
+                        print(f"Initiating payment: {name_surname}, {info[0]}, {1200}")
+                        await golden_PaymentPaid(page, info[0], 1200)
+                        print("Payment completed.")
+                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                        total_paid -= 1200
+                    if info[0] == "BELGE ÜCRETİ":
+                        print(f"Initiating payment: {name_surname}, {info[0]}, {1000}")
+                        await golden_PaymentPaid(page, info[0], 1000)
+                        print("Payment completed.")
+                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                        total_paid -= 1000
+                    if info[0] == "ÖZEL DERS":
+                        print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
+                        await golden_PaymentPaid(page, info[0], 4000)
+                        print("Payment completed.")
+                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                        total_paid -= 4000
+                    if info[0] == "BAŞARISIZ ADAY EĞİTİMİ":
+                        print(f"Initiating payment: {name_surname}, {info[0]}, {4000}")
+                        await golden_PaymentPaid(page, info[0], 4000)
+                        print("Payment completed.")
+                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                        total_paid -= 4000
+                    if info[0] == "TAKSİT":
+                        print(f"Initiating payment: {name_surname}, {info[0]}, {total_paid}")
+                        await golden_PaymentPaid(page, info[0], total_paid)
+                        print("Payment completed.")
+                        await asyncio.sleep(random.uniform(2.1, 3.1))
+                        total_paid -= total_paid
                     payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "BORC ODENDI"])
                     print("round done")
-                #FOR NOW ONLY PAYMENTS TO BE MADE ARE AVAILABLE, BORC ACMAK SONRA
-                #else:
-                #    golden_PaymentOwed(page, name_surname, info[0], payment_information[1][i])
-                #    golden_PaymentPaid(page, name_surname, info[0], payment_information[1][i])
+                #elif info[1] == "BORC YOK":
+                #    golden_PaymentOwed(page, info[0], payment_information[1][i])
+                #    golden_PaymentPaid(page, info[0], payment_information[1][i])
+            
+            if i == 0 or prev_human_name != name_surname:
+                search_new_person = True
+            else:
+                search_new_person = False    
+            prev_human_name = name_surname    
+                
             
         df = pd.DataFrame(payments_recorded_by_bot, columns=["Name", "Amount", "Payment Type", "Status"])
         df.to_csv("payments_recorded_by_bot.csv", index=False)
@@ -203,5 +216,5 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
 
 
 
-print(asyncio.run(RPAexecutioner_GoldenProcessStart("Belge2025v2.xls", "hesaphareketleri")))
+print(asyncio.run(RPAexecutioner_GoldenProcessStart("belgev3.xls", "hesaphareketleri")))
 

@@ -65,7 +65,7 @@ async def get_human_name(description):
     response: ChatResponse = chat(model='gemma3', messages=[
   {
     'role': 'user',
-    'content': 'output ONLY the persons name and surname in all upper case with turkish characters exactly as written (one exception, onur celik yz is a full name, he is called Onur Çelik YZ so write his name like this when you see it). If multiple names are present, output ONLY the first one. Do not output anything else. ' + description + ' if there is no name output ERROR: 404',
+    'content': 'Extract the person\'s name and surname EXACTLY as they appear in the text. \n\nCRITICAL RULES:\n1. Do NOT correct ANYTHING (e.g., if it says "SEYİTHAN", do NOT change it to "SEYİHAN").\n2. Do NOT expand names.\n3. Output ONLY the name in all upper case with Turkish characters.\n4. If multiple names are present, output ONLY the first one.\n5. One exception: "onur celik yz" -> "ONUR ÇELİK YZ".\n6. If no name is found, output "ERROR: 404".\n\nInput Text: ' + description,
   },
 ])
     
@@ -112,26 +112,31 @@ async def image_ocr(screenshot):
             rows[-1][1].append((x, text))
 
     return rows
-async def get_payment_type(page, name_surname, payment_amount):
+async def get_payment_type(page, name_surname, payment_amount, search_new_person=True):
 
     #ENTER THE PERSONS PAGE AND TAKE A SCREENSHOT OF ALL PAYMENTS MADE AND PAYMENTS OWED
+    if search_new_person:
 
-    await human_type(page, "#txtaraadi", name_surname)
+        print("Clicking KURSİYER ARA...")
+        await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
+        
+        await asyncio.sleep(random.uniform(1.7, 3.7))
+        
+        await human_type(page, "#txtaraadi", name_surname)
 
-    await asyncio.sleep(random.uniform(0.8, 1.8))
+        await asyncio.sleep(random.uniform(0.8, 1.8))
 
-    await page.keyboard.press("Enter")
+        await page.keyboard.press("Enter")
 
-    await asyncio.sleep(random.uniform(1.7, 3.7))
+        await asyncio.sleep(random.uniform(1.7, 3.7))
 
-    await human_button_click(page, "a", has_text=name_surname)
+        await human_button_click(page, "a", has_text=name_surname)
 
-    await asyncio.sleep(random.uniform(1.7, 3.7))
+        await asyncio.sleep(random.uniform(1.7, 3.7))
 
-    await human_button_click(page, "a:visible", has_text="ÖDEME")
-    print("in the ODEME page")
-    #TODO take a very specific cropped screenshot of the billing area, we will give to an OCR Algorithm
-    # Screenshot each table separately
+        await human_button_click(page, "a:visible", has_text="ÖDEME")
+        print("in the ODEME page")
+
     tables = page.locator("table.table.table-bordered.dataTable")
     
     # First table
@@ -140,9 +145,6 @@ async def get_payment_type(page, name_surname, payment_amount):
     # Second table
     await tables.nth(1).screenshot(path="screenshotv3.png")
 
-    await asyncio.sleep(random.uniform(0.8, 1.8))
-
-    await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
 
     #GO THROUGH THE SCREENSHOT WITH OCR AND ORGANIZE IT IN ARRAYS
     print("Starting OCR on screenshots...")
@@ -272,14 +274,14 @@ async def get_payment_type(page, name_surname, payment_amount):
     #COMPLEX PAYMENTS
     if payment_copy > 1600:
         if (payment_copy - 1600)%500 == 0 and payment_copy - 1600 != 4000:
-            if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)) and (check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):
+            if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
                 payment_types.append(["TAKSİT", "BORC VAR"])
             elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
                 payment_types.append(["TAKSİT", "BORC VAR"])
         elif (payment_copy - 1600)%500 == 0 and payment_copy - 1600 == 4000:
-            if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)) and (check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):
+            if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
                 payment_types.append(["DORTBIN", "FLAG: 4000"])
             elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):

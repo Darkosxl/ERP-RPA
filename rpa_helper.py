@@ -11,6 +11,12 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import dotenv
 
+def check_owed(keyword, payment_owed):
+    return any(keyword in row for row in payment_owed)
+
+def check_paid(keyword, payments_paid):
+    return any(keyword in row for row in payments_paid)
+    
 async def human_option_select(page, dropdown_selector, option_text):
     dropDownList = page.locator(dropdown_selector)
     await dropDownList.select_option(option_text)
@@ -23,7 +29,7 @@ async def human_button_click(page, selector=None, has_text=None ,exact_text=None
     elif selector:
         element = page.locator(selector).first
     else:
-        console.log("No selector provided")
+        print("No selector provided")
         return
     
     if check_exists:
@@ -59,17 +65,35 @@ async def get_human_name(description):
     response: ChatResponse = chat(model='gemma3', messages=[
   {
     'role': 'user',
-    'content': 'output the persons name and surname in all upper case with turkish characters exactly as written' + description + ' if there is no name output ERROR: 404',
+    'content': 'output ONLY the persons name and surname in all upper case with turkish characters exactly as written (one exception, onur celik yz is a full name, he is called Onur Çelik YZ so write his name like this when you see it). If multiple names are present, output ONLY the first one. Do not output anything else. ' + description + ' if there is no name output ERROR: 404',
   },
 ])
     
     return response['message']['content']
 
+async def clean_payment_row(row_text):
+    # Use LLM to clean the messy OCR row into a structured format
+    response: ChatResponse = chat(model='gemma3', messages=[
+        {
+            'role': 'user',
+            'content': 'You are a data cleaner. Extract the Payment Type, Date, Amount, and Status from this messy OCR text. \n\nRules:\n1. Output strictly a list of 4 items: [Type, Date, Amount, Status].\n2. Status must be "ÖDEDİ" or "ÖDEMEDİ".\n3. Payment Type MUST be one of these EXACT strings (fix any OCR errors to match these):\n   - "YAZILI SINAV HARCI"\n   - "UYGULAMA SINAV HARCI"\n   - "BAŞARISIZ ADAY EĞİTİMİ"\n   - "ÖZEL DERS"\n   - "BELGE ÜCRETİ"\n   - "TAKSİT"\n4. If the text contains "YZL", "SNV", "HARCI", map it to "YAZILI SINAV HARCI".\n5. If the text contains "UYG", "SNV", "HARCI", map it to "UYGULAMA SINAV HARCI".\n6. If the text contains "BASARISIZ", "ADAY", "EGITIMI", map it to "BAŞARISIZ ADAY EĞİTİMİ".\n7. If the text contains "OZEL", "DERS", map it to "ÖZEL DERS".\n8. If the text contains "BELGE", "UCRETI", map it to "BELGE ÜCRETİ".\n\nExample 1:\nInput: "ÖDEMEDİ UYG 05.12.2025 SNV. 600,00 AVUKAT HARCI"\nOutput: [UYGULAMA SINAV HARCI, 05.12.2025, 600,00, ÖDEMEDİ]\n\nExample 2:\nInput: "YZL: SNV. 05.12.2025 1.200,00 ÖDEMEDİ"\nOutput: [YAZILI SINAV HARCI, 05.12.2025, 1.200,00, ÖDEMEDİ]\n\nExample 3:\nInput: "BASARISIZ ADAY 05.12.2025 4.000,00 EĞİTİMİ"\nOutput: [BAŞARISIZ ADAY EĞİTİMİ, 05.12.2025, 4.000,00, ÖDEMEDİ]\n\nInput: ' + row_text + '\nOutput ONLY the list format like the examples.'
+        },
+    ])
+    
+    content = response['message']['content']
+    # Return the first line
+    lines = [line.strip() for line in content.split('\n') if line.strip()]
+    if lines:
+        return lines[0]
+    return row_text
+
 async def image_ocr(screenshot):
-    reader = easyocr.Reader(['tr', 'en'])
+    # Use CPU to avoid OOM with high mag_ratio
+    reader = easyocr.Reader(['tr', 'en'], gpu=False)
 
     # 1. Read and Sort by Y (vertical position) first to group lines
-    results = sorted(reader.readtext(screenshot), key=lambda r: r[0][0][1])
+    # mag_ratio=2 enlarges the image internally, helping with small text/numbers
+    results = sorted(reader.readtext(screenshot, mag_ratio=2), key=lambda r: r[0][0][1])
 
     rows = []
     for bbox, text, _ in results:
@@ -79,13 +103,18 @@ async def image_ocr(screenshot):
         
         # 2. Group by Row (Y proximity)
         # We store (x, text) tuples now, so we can sort them left-to-right later
-        if not rows or abs(y - rows[-1][0]) > 10:
+        # 2. Group by Row (Y proximity)
+        # We store (x, text) tuples now, so we can sort them left-to-right later
+        # Increased threshold to 50 to handle multi-line text wrapping (e.g. BASARISIZ ADAY EĞİTİMİ)
+        if not rows or abs(y - rows[-1][0]) > 50:
             rows.append([y, [(x, text)]])
         else:
             rows[-1][1].append((x, text))
 
     return rows
-async def get_payment_type(page, name_surname, description, payment_amount):
+async def get_payment_type(page, name_surname, payment_amount):
+
+    #ENTER THE PERSONS PAGE AND TAKE A SCREENSHOT OF ALL PAYMENTS MADE AND PAYMENTS OWED
 
     await human_type(page, "#txtaraadi", name_surname)
 
@@ -100,99 +129,171 @@ async def get_payment_type(page, name_surname, description, payment_amount):
     await asyncio.sleep(random.uniform(1.7, 3.7))
 
     await human_button_click(page, "a:visible", has_text="ÖDEME")
-
+    print("in the ODEME page")
     #TODO take a very specific cropped screenshot of the billing area, we will give to an OCR Algorithm
-    await page.screenshot(path="screenshotv2.png")
+    # Screenshot each table separately
+    tables = page.locator("table.table.table-bordered.dataTable")
+    
+    # First table
+    await tables.nth(0).screenshot(path="screenshotv2.png")
+    
+    # Second table
+    await tables.nth(1).screenshot(path="screenshotv3.png")
 
     await asyncio.sleep(random.uniform(0.8, 1.8))
 
     await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
 
-    payments_info = image_ocr("screenshotv3.png")
+    #GO THROUGH THE SCREENSHOT WITH OCR AND ORGANIZE IT IN ARRAYS
+    print("Starting OCR on screenshots...")
+    payments_taksit_info = await image_ocr("screenshotv2.png")
+    payments_info = await image_ocr("screenshotv3.png")
+    print(f"OCR Complete. Found {len(payments_info)} rows in payments and {len(payments_taksit_info)} rows in taksit.")
 
     payment_types = []
-    to_be_paid = []
     payment_owed = []
     payments_paid = []
+    payments_taksit_paid = []
+    payments_taksit_owed = []
+
+    for row in payments_taksit_info:
+        if len(row) < 2:
+            continue
+        # row = [y_position, [(x, text), (x, text), ...]]
+        # Sort by X position to get left-to-right order
+        sorted_items = sorted(row[1], key=lambda item: item[0])
+        
+        if len(sorted_items) < 2:
+            continue
+        
+        # Find payment type (skip leading row numbers)
+        payment_type_text = None
+        for x, text in sorted_items:
+            if not text.strip().isdigit():
+                payment_type_text = text
+           # Join all text in the row to form a single string
+        row_text = " ".join([text for x, text in sorted_items])
+        
+        # Clean the row with LLM
+        cleaned_row = await clean_payment_row(row_text)
+        print(f"Original: {row_text} -> Cleaned: {cleaned_row}")
+        
+        if "ÖDEDİ" in row_text:
+            payments_taksit_paid.append(cleaned_row)
+        else: 
+            payments_taksit_owed.append(cleaned_row)
 
     for row in payments_info:
         if len(row) < 2:
             continue
-        if "ÖDEDİ" in row:
-            payments_paid.append(row[1])
+        # row = [y_position, [(x, text), (x, text), ...]]
+        # Sort by X position to get left-to-right order
+        sorted_items = sorted(row[1], key=lambda item: item[0])
+        
+        if len(sorted_items) < 2:
+            continue
+        
+        # Find payment type (skip leading row numbers)
+        payment_type_text = None
+        for x, text in sorted_items:
+            if not text.strip().isdigit():
+                payment_type_text = text
+           # Join all text in the row to form a single string
+        row_text = " ".join([text for x, text in sorted_items])
+        
+        # Clean the row with LLM
+        cleaned_row = await clean_payment_row(row_text)
+        print(f"Original: {row_text} -> Cleaned: {cleaned_row}")
+        
+        if "ÖDEDİ" in row_text:
+            payments_paid.append(cleaned_row)
         else: 
-            to_be_paid.append(row[-1])
-            payment_owed.append(row[1])
+            # We store the full row text now, logic will check for substrings
+            payment_owed.append(cleaned_row)
 
-    #SET KURALLAR:
+    print(f"Payments Owed: {payment_owed}")
+    print(f"Payments Paid: {payments_paid}")
+    print(f"Taksit Owed: {payments_taksit_owed}")
+    print(f"Taksit Paid: {payments_taksit_paid}")
+
+    #CALCULATE WHAT IS BEING PAID ACTUALLY
+    #SIMPLE PAYMENTS
+    print(f"Calculating logic for amount: {payment_amount}")
+    
+    # Helper to check if any row contains the keyword
+    
+
     if payment_amount == 1200:
-        if "YAZILI SINAV HARCI" in payment_owed:
+        if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
+            print("Logic: 1200 -> YAZILI SINAV HARCI (BORC VAR)")
             payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
             return payment_types
         else: 
             payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
             return payment_types
     if payment_amount == 1600:
-        if "UYGULAMA SINAV HARCI" in payment_owed:
+        if check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed):
+            print("Logic: 1600 -> UYGULAMA SINAV HARCI (BORC VAR)")
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
             return payment_types
         else: 
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
             return payment_types
     if payment_amount == 900:
-        if "YAZILI SINAV HARCI" in payment_owed:
+        if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
             payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
             return payment_types
         else: 
             payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
             return payment_types
     if payment_amount == 1350:
-        if "UYGULAMA SINAV HARCI" in payment_owed:
+        if check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed):
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
             return payment_types
         else: 
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
             return payment_types
     
-    if payment_amount == 4000 and "BAŞARISIZ ADAY EĞİTİMİ" in payment_owed:
+    if payment_amount == 4000 and check_owed("BAŞARISIZ ADAY EĞİTİMİ", payment_owed):
         payment_types.append(["BAŞARISIZ ADAY EĞİTİMİ", "BORC VAR"])
         return payment_types
 
-    if payment_amount == 4000 and "ÖZEL DERS" in payment_owed:
+    if payment_amount == 4000 and check_owed("ÖZEL DERS", payment_owed):
         payment_types.append(["ÖZEL DERS", "BORC VAR"])
         return payment_types
 
     payment_copy = payment_amount
 
-    if payment_amount == 2000 and "BELGE ÜCRETİ" in payment_owed:
+    if payment_amount == 2000 and check_owed("BELGE ÜCRETİ", payment_owed):
         payment_types.append(["BELGE ÜCRETİ", "BORC VAR"])
         payment_types.append(["TAKSİT", "BORC VAR"])
         return payment_types
 
+    #COMPLEX PAYMENTS
     if payment_copy > 1600:
         if (payment_copy - 1600)%500 == 0 and payment_copy - 1600 != 4000:
-            if "UYG. SNV. HARCI" in payment_owed and "YZL. SNV. HARCI" in payments_paid:
+            if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)) and (check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
                 payment_types.append(["TAKSİT", "BORC VAR"])
-            elif "YZL. SNV. HARCI" in payment_owed:
+            elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
                 payment_types.append(["TAKSİT", "BORC VAR"])
         elif (payment_copy - 1600)%500 == 0 and payment_copy - 1600 == 4000:
-            if "UYG. SNV. HARCI" in payment_owed and "YZL. SNV. HARCI" in payments_paid:
+            if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)) and (check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
                 payment_types.append(["DORTBIN", "FLAG: 4000"])
-            elif "YZL. SNV. HARCI" in payment_owed:
+            elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
                 payment_types.append(["DORTBIN", "FLAG: 4000"])
         if (payment_copy - 1200)%500 == 0 and payment_copy - 1200 != 4000:
-            if "YZL. SNV. HARCI" in payment_owed:
+            if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
                 payment_types.append(["TAKSİT", "BORC VAR"])
             else:
                 payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
                 payment_types.append(["TAKSİT", "BORC VAR"])
         elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 == 4000:
-            if "YZL. SNV. HARCI" in payment_owed:
+            if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
                 payment_types.append(["DORTBIN", "FLAG: 4000"])
             else:

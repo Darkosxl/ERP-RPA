@@ -97,16 +97,20 @@ async def RPAexecutioner_readfile(filename, sheetname):
 
 async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
     async with Stealth().use_async(async_playwright()) as playwright:
+        payments_recorded_by_bot = []
         chromium = playwright.chromium
         
+        print("Launching browser...")
         browser = await chromium.launch(headless=False)
         
         context = await browser.new_context()
         
         page = await context.new_page()
+        print("Page created. Navigating to login page...")
         
         response = await page.goto("https://kurs.goldennet.com.tr/giris.php")
         
+        print("Typing login credentials...")
         await human_type(page, "#kurumkodu", os.getenv("institution_code"))
         await asyncio.sleep(random.uniform(0.7, 1.9))
         
@@ -120,34 +124,69 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
         
         await asyncio.sleep(random.uniform(1.5, 4.1))
 
+        # Close the notification popup
+        print("Attempting to close notification popup...")
+        try:
+            await page.click("button.close", timeout=5000)
+        except:
+            print("Could not find button.close, trying text=X")
+            try:
+                await page.get_by_text("X", exact=True).click(timeout=2000)
+            except:
+                print("Could not click X either")
+        
+        await asyncio.sleep(random.uniform(1.1,2.2))
+
+        print("Clicking KURSİYER ARA...")
         await human_button_click(page, "a.btn.bg-orange", has_text="KURSİYER ARA")
         
         await asyncio.sleep(random.uniform(1.7, 3.7))
 
         
 
-        payment_information = RPAexecutioner_readfile(filename, sheetname)
+        payment_information = await RPAexecutioner_readfile(filename, sheetname)
 
         for i in range(len(payment_information[0])):
             
-            if payment_information[1][i].contains("-"):
-                console.log(payment_information[1][i] +" Cost, not a received payment")
+            if "-" in str(payment_information[1][i]):
+                print(str(payment_information[1][i]) +" Cost, not a received payment")
                 continue
-            if payment_information[2][i] != "Para Transferi":
-                console.log("Not a payment transfer")
+            if str(payment_information[2][i]) != "Para Transferi":
+                print("Not a payment transfer" + str(payment_information[0][i]))
                 continue
 
-            name_surname = get_human_name(payment_information[0][i])
+            print(f"Processing row {i}: {payment_information[0][i]}")
+            name_surname = await get_human_name(str(payment_information[0][i]))
+            print(f"Human name retrieved: {name_surname}")
             if name_surname == "ERROR: 404":
-                console.log("Error: name not found" + payment_information[0][i] + "was not attributed to any name")
+                payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "ERROR: 404 couldn't find name"])
+                print("Error: name not found" + str(payment_information[0][i]) + "was not attributed to any name")
                 continue
             else:
-                console.log("name found" + name_surname)
+                print("name found: " + name_surname)
 
-            payment_type = get_payment_type(page, name_surname,payment_information[0][i],payment_information[1][i])
-
+            print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
+            payment_type = await get_payment_type(page, name_surname,payment_information[1][i])
+            print(f"Payment type result: {payment_type}")
+            for info in payment_type:
+                print(f"Processing info: {info}")
+                if info[1] == "FLAG: 4000":
+                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "FLAG: 4000"])
+                    print("Payment amount is 4000, skipping")
+                if info[1] == "BORC VAR":
+                    print(f"Initiating payment: {name_surname}, {info[0]}, {payment_information[1][i]}")
+                    await golden_PaymentPaid(page, name_surname, info[0], payment_information[1][i])
+                    print("Payment completed.")
+                    await asyncio.sleep(random.uniform(2.1, 3.1))
+                    payments_recorded_by_bot.append([name_surname, payment_information[1][i], info[0], "BORC ODENDI"])
+                    print("round done")
+                #FOR NOW ONLY PAYMENTS TO BE MADE ARE AVAILABLE, BORC ACMAK SONRA
+                #else:
+                #    golden_PaymentOwed(page, name_surname, info[0], payment_information[1][i])
+                #    golden_PaymentPaid(page, name_surname, info[0], payment_information[1][i])
             
-        
+        df = pd.DataFrame(payments_recorded_by_bot, columns=["Name", "Amount", "Payment Type", "Status"])
+        df.to_csv("payments_recorded_by_bot.csv", index=False)
         
         is_bot = await page.evaluate("navigator.webdriver")
         
@@ -164,5 +203,5 @@ async def RPAexecutioner_GoldenProcessStart(filename, sheetname):
 
 
 
-print(asyncio.run(get_payment_type("FAST2923973105-ESRANUR GÖNEN-KURS ÜCRETİ +SINAV HARCI")))
+print(asyncio.run(RPAexecutioner_GoldenProcessStart("Belge2025v2.xls", "hesaphareketleri")))
 

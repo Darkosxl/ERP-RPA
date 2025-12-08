@@ -70,12 +70,27 @@ def reply_whatsapp():
         )
         
         llm_output = response['message']['content']
-
-        if "no_information" in llm_output:
+        df = pd.read_excel("result_table.xlsx")
+        
+        if "no_information" in llm_output or "unsolved" not in df["solved"]:
             wp_response.message("bu mesaji esgeciyorum: " + message)
-        elif "name" in llm_output:  
+            if "unsolved" not in df["solved"]:
+                wp_response.message("Tum problemler cozulmus, elimize saglik hocam! Bu defteri kapatiyorum.")
+                try: os.remove("result_table.xlsx")
+                except: pass
+                    
+        elif "name" in llm_output:
+            payment_type = "?"  
+            payment_amount = "0"
+            for i in len(df["solved"]):
+                if df["solved"][i] == "unsolved":
+                    payment_type = df["payment_type"][i]
+                    payment_amount = df["payment_amount"][i]
+                    break
+            
+#TODO pos cihazindan gelen parayi da ayarla
 
-            wp_response.message(llm_output + " adi ogrenilen Vatandasin odemesi Golden'a giris yapildi: ")
+            wp_response.message(llm_output + " adi ogrenilen Vatandasin odemesi Golden'a giris yapildi: " + payment_type + " " + payment_amount)
         elif "payment_type" in llm_output:
 
             wp_response.message( + "Vatandasin ogrenilen odemesi Golden'a giris yapildi: " + llm_output)

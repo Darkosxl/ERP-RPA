@@ -14,6 +14,8 @@ import operator
 from datetime import datetime
 import requests
 import json
+from icu import Locale,UnicodeString
+
 
 SYSTEM_PROMPT = """You are an expert entity extraction system specialized in identifying Turkish human names in payment descriptions.
 Your goal is to extract ALL full human names found in the text that are DIFFERENT from the 'Sender Name'.
@@ -25,6 +27,12 @@ Rules:
 4. Output MUST be a strictly valid JSON list of strings. Example: ["Ali Yilmaz", "Ayse Demir"]
 5. If no valid names are found, output empty list: []
 """
+tr = Locale("tr")
+def turkish_pattern_check(text):
+    texter = str(UnicodeString(text).toUpper(Locale("tr")))
+    escaped_text = re.escape(texter)
+    pattern = re.sub(r'[iİıI]', '[iİıI]', escaped_text)
+    return re.compile(pattern, re.IGNORECASE)
 
 def check_date_if_paid(date_of_payment, payments_paid):
     if len(payments_paid) == 0:
@@ -81,7 +89,8 @@ async def human_button_click(page, selector=None, has_text=None ,exact_text=None
     if exact_text:
         element = page.get_by_text(exact_text, exact=False)
     elif selector and has_text:
-        element = page.locator(selector).filter(has_text=has_text).first
+        has_text_tr = turkish_pattern_check(has_text)
+        element = page.locator(selector).filter(has_text=has_text_tr).first
     elif selector:
         element = page.locator(selector).first
     else:
@@ -152,11 +161,11 @@ async def get_human_name(description):
                     content = content.replace('```json', '').replace('```', '').strip()
                     names = json.loads(content)
                     if names:
-                        # Return the first name found, or join them if multiple?
-                        # For RPA compatibility, returning the first valid name is safest.
-                        # If user wants all, we can join them, but search might fail.
-                        # Returning the first one for now as it's the most likely intended target.
+                        # Return the first name found
                         return names[0] 
+                    else:
+                        # LLM found no names in description, so return the Sender Name
+                        return name
             except Exception as e:
                 print(f"LLM Error: {e}")
                 
@@ -190,6 +199,8 @@ async def get_human_name(description):
                     names = json.loads(content)
                     if names:
                         return names[0]
+                    else:
+                        return name
             except Exception as e:
                 print(f"LLM Error: {e}")
 
@@ -302,8 +313,11 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
 
         # Dead screen check - verify the name appears in results (Case Insensitive Check)
         # We use a comma-separated selector list which acts as an OR operator in CSS
-        success_indicator = page.locator(f"a:has-text('{name_surname}'), a:has-text('{name_surname.upper()}'), a:has-text('{name_surname.lower()}')").first
         
+
+        #success_indicator = page.locator(f"a:has-text('{name_surname}'), a:has-text('{name_surname.upper()}'), a:has-text('{UnicodeString(name_surname).toLower(tr)}'), a:has-text('{UnicodeString(name_surname).toUpper(tr)}'), a::has-text('{UnicodeString(name_surname.split(" ")[0]).toUpper(tr)}')").first
+        name_pattern = turkish_pattern_check(name_surname)
+        success_indicator = page.get_by_role("link", name=name_pattern)
         try:
             await success_indicator.wait_for(state="visible", timeout=3000)
         except:
@@ -320,7 +334,7 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             
             try:
                 # Same combined check for surname
-                success_indicator = page.locator(f"a:has-text('{surname}'), a:has-text('{surname.upper()}'), a:has-text('{surname.lower()}')").first
+                success_indicator = page.locator(f"a:has-text('{surname}'), a:has-text('{surname.upper()}'), a:has-text('{str(UnicodeString(surname).toLower(tr))}'), a:has-text('{str(UnicodeString(surname).toUpper(tr))}')").first
                 await success_indicator.wait_for(state="visible", timeout=3000)
             except:
                 print(f"Both attempts failed for '{name_surname}'")
@@ -328,11 +342,12 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
                 inferred_type = infer_payment_type_from_amount(payment_amount)
                 return [[inferred_type, "FLAG: 404"]]
 
-        await human_button_click(page, "a", has_text=name_surname)
-        await asyncio.sleep(random.uniform(1.7, 3.7))
+    # Click on the person's name to go to payment page
+    await human_button_click(page, "a", has_text=name_surname)
+    await asyncio.sleep(random.uniform(1.7, 3.7))
         
-        await human_button_click(page, "a:visible", has_text="ÖDEME")
-        print("in the ODEME page")
+    await human_button_click(page, "a:visible", has_text="ÖDEME")
+    print("in the ODEME page")
 
     tables = page.locator("table.table.table-bordered.dataTable")
     
@@ -531,7 +546,7 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
                 payment_types.append(["TAKSİT", "BORC VAR"])
             elif check_paid("BELGE ÜCRETİ", payments_paid):
                 payment_types.append(["BELGE ÜCRETİ", "BORC ODENMIS"])
-                if check_date_if_paid(date_of_payment, payments_paid):
+                if check_date_if_paid(date_of_payment, payments_taksit_paid):
                     payment_types.append(["TAKSİT", "BORC ODENMIS"])
                 else: 
                     payment_types.append(["TAKSİT", "BORC VAR"])

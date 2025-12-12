@@ -28,7 +28,7 @@ async def golden_PaymentPaid(page, collection_type, amount):
     
     await human_type(page, "#yenitahsilat_tutar", str(amount))
     
-    await asyncio.sleep(random.uniform(11.1, 14.1))
+    await asyncio.sleep(random.uniform(4.1, 7.1))
     
     await human_button_click(page, "button", has_text="ÖDETTİR")
     
@@ -115,6 +115,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
 
         prev_human_name = ""
         search_new_person = True
+        current_cache = None
         for i in range(len(payment_information[0])):
             
             if "-" in str(payment_information[1][i]):
@@ -127,6 +128,12 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
             print(f"Processing row {i}: {payment_information[0][i]}")
             name_surname = await get_human_name(str(payment_information[0][i]))
             print(f"Human name retrieved: {name_surname}")
+            
+            if name_surname == prev_human_name:
+                search_new_person = False
+            else:
+                search_new_person = True
+                
             if name_surname == "ERROR: 404":
                 payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "FLAG 404: NAME_NOT_FOUND"])
                 print("Error: name not found" + str(payment_information[0][i]) + "was not attributed to any name")
@@ -139,7 +146,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                 continue
             print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
 
-            payment_type = await get_payment_type(page, name_surname,payment_information[1][i], payment_information[3][i], search_new_person)
+            payment_type, current_cache = await get_payment_type(page, name_surname,payment_information[1][i], payment_information[3][i], search_new_person, cached_data=current_cache)
             print(f"Payment type result: {payment_type}")
             
             # Sort so TAKSİT is always last
@@ -216,10 +223,6 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                 #    golden_PaymentOwed(page, info[0], payment_information[1][i])
                 #    golden_PaymentPaid(page, info[0], payment_information[1][i])
             
-            if i == 0 or prev_human_name != name_surname:
-                search_new_person = True
-            else:
-                search_new_person = False    
             prev_human_name = name_surname    
                 
             

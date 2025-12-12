@@ -31,6 +31,21 @@ Rules:
 5. Do not output markdown, code blocks, or explanation. Just raw JSON.
 """
 
+def cleanup_old_files():
+    """Deletes all .xls and .xlsx files in the current directory."""
+    try:
+        files = os.listdir('.')
+        for file in files:
+            if file.endswith('.xls') or file.endswith('.xlsx'):
+                try:
+                    os.remove(file)
+                    print(f"Deleted old file: {file}")
+                except Exception as e:
+                    print(f"Error deleting {file}: {e}")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+
+
 def run_rpa_background(filename, user_phone):
     """Runs the RPA process in a background thread and sends a WhatsApp notification."""
     try:
@@ -138,6 +153,9 @@ def reply_whatsapp():
     wp_response = MessagingResponse()
     #if there is an excel sheet sent
     if num_media == 1:
+        # Cleanup old files before downloading new one
+        cleanup_old_files()
+        
         if os.path.isfile("result_table.xlsx"):
             os.remove("result_table.xlsx")
         media_url = request.form.get("MediaUrl0")

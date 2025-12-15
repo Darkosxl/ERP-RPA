@@ -189,7 +189,7 @@ async def get_human_name(description):
                         "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
                     },
                     data=json.dumps({
-                    "model": "openai/gpt-oss-120b", 
+                    "model": "openai/gpt-5.2", 
                         "messages": [
                             {'role': 'system', 'content': SYSTEM_PROMPT},
                             {'role': 'user', 'content': f"Description: {info} | Sender: {name}"}
@@ -228,7 +228,7 @@ async def get_human_name(description):
                         "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
                     },
                     data=json.dumps({
-                    "model": "openai/gpt-oss-120b", 
+                    "model": "openai/gpt-5.2", 
                         "messages": [
                             {'role': 'system', 'content': SYSTEM_PROMPT},
                             {'role': 'user', 'content': f"Description: {info} | Sender: {name}"}
@@ -248,6 +248,31 @@ async def get_human_name(description):
 
             return name
     
+    # Fallback for any other format (e.g. EF5600706 MEHMET İDRİS AKTAŞ...)
+    else:
+        try:
+            response = requests.post(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
+                },
+                data=json.dumps({
+                "model": "openai/gpt-5.2", 
+                    "messages": [
+                        {'role': 'system', 'content': SYSTEM_PROMPT},
+                        {'role': 'user', 'content': f"Description: {description} | Sender: UNKNOWN"}
+                    ]
+                })
+            )
+            if response.status_code == 200:
+                content = response.json()['choices'][0]['message']['content']
+                content = content.replace('```json', '').replace('```', '').strip()
+                names = json.loads(content)
+                if names:
+                    return names[0]
+        except Exception as e:
+            print(f"LLM Error in fallback: {e}")
+
     return "Error 401: No name found"   
 
 
@@ -277,7 +302,7 @@ async def clean_payment_row(row_text):
                 "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
             },
             data=json.dumps({
-                "model": "openai/gpt-oss-120b", 
+                "model": "openai/gpt-5.2", 
                 "messages": [
                     {'role': 'user', 'content': prompt}
                 ]
@@ -470,8 +495,15 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
                     payment_type_text = text
             # Join all text in the row to form a single string
             row_text = " ".join([text for x, text in sorted_items])
+
+            # Skip header rows (Case insensitive and more robust)
+            row_upper = row_text.upper()
+            if "TIPI" in row_upper or "TİPİ" in row_upper or "BORÇ" in row_upper or "DURUMU" in row_upper or "VADE" in row_upper:
+                print(f"Skipping header row: {row_text}")
+                continue
             
             # Clean the row with LLM
+            print(f"Processing row with LLM: {row_text}")
             cleaned_row = await clean_payment_row(row_text)
             print(f"Original: {row_text} -> Cleaned: {cleaned_row}")
             

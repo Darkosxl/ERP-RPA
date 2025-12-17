@@ -2,6 +2,8 @@ import asyncio
 import random
 import time
 import os
+import csv
+import json
 from twilio.rest import Client
 import pandas as pd
 import easyocr
@@ -27,6 +29,32 @@ Rules:
 4. Output MUST be a strictly valid JSON list of strings. Example: ["Ali Yilmaz", "Ayse Demir"]
 5. If no valid names are found, output empty list: []
 """
+def clear_processing_status():
+    if os.path.exists("current_status.json"):
+        os.remove("current_status.json")
+def update_processing_status(name, stage, payment_type=None, payment_amount=None):
+    # Stages:'processing', 'almost_completed', 'completed', 'flagged'
+    status = {
+        "name":name,
+        "stage":stage,
+        "payment_type":payment_type,
+        "payment_amount":payment_amount
+    }
+    with open("current_status.json", "w") as f:
+        json.dump(status, f)
+
+def save_payment_record(row):
+    if os.path.exists("payments_recorded_by_bot.csv"):
+        with open("payments_recorded_by_bot.csv", "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(row)
+    else:
+        with open("payments_recorded_by_bot.csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["name", "payment_amount", "payment_type", "status"])
+            writer.writerow(row)
+    clear_processing_status()
+    return
 
 def get_owed_taksit(taksit_owed):
     for row in taksit_owed:

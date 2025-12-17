@@ -1,12 +1,15 @@
+# TODO: Refactor - Merge GoldenProcessStart & GoldenUniqueProcess into ONE mother function
+# TODO: Add HEADLESS config toggle
 import asyncio
 import random
 import time
 import os
+import csv
 import pandas as pd
 
 from ollama import chat
 from ollama import ChatResponse
-from rpa_helper import human_option_select, human_button_click, human_type, get_human_name, get_payment_type
+from rpa_helper import human_option_select, human_button_click, human_type, get_human_name, get_payment_type, save_payment_record, update_processing_status
 
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
@@ -71,7 +74,6 @@ async def RPAexecutioner_readfile(filename, sheetname):
 
 async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
     async with Stealth().use_async(async_playwright()) as playwright:
-        payments_recorded_by_bot = []
         chromium = playwright.chromium
         
         print("Launching browser...")
@@ -135,16 +137,17 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                 search_new_person = True
                 
             if name_surname == "ERROR: 404":
-                payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "FLAG 404: NAME_NOT_FOUND"])
+                save_payment_record([name_surname, payment_information[1][i], "NA", "FLAG 404: NAME_NOT_FOUND"])
                 print("Error: name not found" + str(payment_information[0][i]) + "was not attributed to any name")
                 continue
             else:
                 print("name found: " + name_surname)
             if name_surname == "PAYMENT_BY_POS":
-                payments_recorded_by_bot.append([name_surname, payment_information[1][i], "NA", "FLAG: POS"])
+                save_payment_record([name_surname, payment_information[1][i], "NA", "FLAG: POS"])
                 print("Payment by pos, skipping")
                 continue
             print(f"Getting payment type for {name_surname} with amount {payment_information[1][i]}")
+            update_processing_status(name_surname, "processing", None, payment_information[1][i])
 
             payment_type, current_cache = await get_payment_type(page, name_surname,payment_information[1][i], payment_information[3][i], search_new_person, cached_data=current_cache)
             print(f"Payment type result: {payment_type}")
@@ -158,11 +161,11 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                 print(f"Processing info: {info}")
                 if info[1] == "FLAG: 404":
                     payment_entered = total_paid
-                    payments_recorded_by_bot.append([name_surname, payment_entered, info[0], "FLAG: 404"])
+                    save_payment_record([name_surname, payment_entered, info[0], "FLAG: 404"])
                     print("Name not found, skipping")
                 if info[1] == "FLAG: 4000":
                     payment_entered = 4000
-                    payments_recorded_by_bot.append([name_surname, payment_entered, info[0], "FLAG: 4000"])
+                    save_payment_record([name_surname, payment_entered, info[0], "FLAG: 4000"])
                     print("Payment amount is 4000, skipping")
                     
                 if info[1] == "BORC VAR":
@@ -217,25 +220,25 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None):
                         await asyncio.sleep(random.uniform(2.1, 3.1))
                         payment_entered = total_paid
                         total_paid -= total_paid
-                    payments_recorded_by_bot.append([name_surname, payment_entered, info[0], "PAID"])
+                    update_processing_status(name_surname, "almost_completed", info[0], payment_entered)
+                    save_payment_record([name_surname, payment_entered, info[0], "PAID"])
                     print("round done")
                 #elif info[1] == "BORC YOK":
                 #    golden_PaymentOwed(page, info[0], payment_information[1][i])
                 #    golden_PaymentPaid(page, info[0], payment_information[1][i])
             
-            prev_human_name = name_surname    
-                
-            
-        df = pd.DataFrame(payments_recorded_by_bot, columns=["name", "payment_amount", "payment_type", "status"])
-        df.to_csv("payments_recorded_by_bot.csv", index=False)
-        
+            prev_human_name = name_surname
+
+
         is_bot = await page.evaluate("navigator.webdriver")
-        
         print(f"Am I a bot? {is_bot}")
-                
-        
+
         await browser.close()
-        return df
+
+        # Return the CSV as DataFrame for compatibility with flask_endpoint
+        if os.path.exists("payments_recorded_by_bot.csv"):
+            return pd.read_csv("payments_recorded_by_bot.csv")
+        return pd.DataFrame(columns=["name", "payment_amount", "payment_type", "status"])
 
         
 async def RPAexecutioner_GoldenUniqueProcess(name_surname=None, payment_type=None, payment_amount=None, is_owed=False):

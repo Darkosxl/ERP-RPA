@@ -1,4 +1,7 @@
-from flask import Flask, request, Response
+# TODO: Add /upload endpoint for Excel drag & drop
+# TODO: Add /start endpoint to begin RPA processing
+# TODO: Add /resolve_flag endpoint for flagged items (name/payment_type input)
+from flask import Flask, request, Response, jsonify, send_file
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 import requests
@@ -32,11 +35,11 @@ Rules:
 """
 
 def cleanup_old_files():
-    """Deletes all .xls and .xlsx files in the current directory."""
+    """Deletes all .xls, .xlsx, and .csv files in the current directory."""
     try:
         files = os.listdir('.')
         for file in files:
-            if file.endswith('.xls') or file.endswith('.xlsx'):
+            if file.endswith('.xls') or file.endswith('.xlsx') or file.endswith('.csv'):
                 try:
                     os.remove(file)
                     print(f"Deleted old file: {file}")
@@ -278,6 +281,31 @@ def reply_whatsapp():
 @app.route("/health", methods=["GET"])
 def health():
     return "200 OK"
+
+@app.route("/status", methods=["GET"])
+def status():
+    result = {
+        "payments": [],
+        "current": None
+    }
+
+    if os.path.exists("payments_recorded_by_bot.csv"):
+        try:
+            df = pd.read_csv("payments_recorded_by_bot.csv")
+            result["payments"] = df.to_dict(orient="records")
+        except:
+            pass
+    if os.path.exists("current_status.json"):
+        try:
+            with open("current_status.json", "r") as f:
+                result["current"] = json.load(f)
+        except:
+            pass
+    return jsonify(result)
+
+@app.route("/whiteboard", methods=["GET"])
+def whiteboard():
+    return send_file("whiteboard.html")
 
 if __name__ == "__main__":
     app.run(port=3987)

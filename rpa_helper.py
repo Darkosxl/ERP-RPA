@@ -217,7 +217,7 @@ async def get_human_name(description):
                         "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
                     },
                     data=json.dumps({
-                    "model": "openai/gpt-5.2", 
+                    "model": "google/gemini-3-flash-preview", 
                         "messages": [
                             {'role': 'system', 'content': SYSTEM_PROMPT},
                             {'role': 'user', 'content': f"Description: {info} | Sender: {name}"}
@@ -256,7 +256,7 @@ async def get_human_name(description):
                         "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
                     },
                     data=json.dumps({
-                    "model": "openai/gpt-5.2", 
+                    "model": "google/gemini-3-flash-preview", 
                         "messages": [
                             {'role': 'system', 'content': SYSTEM_PROMPT},
                             {'role': 'user', 'content': f"Description: {info} | Sender: {name}"}
@@ -285,7 +285,7 @@ async def get_human_name(description):
                     "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
                 },
                 data=json.dumps({
-                "model": "openai/gpt-5.2", 
+                "model": "google/gemini-3-flash-preview", 
                     "messages": [
                         {'role': 'system', 'content': SYSTEM_PROMPT},
                         {'role': 'user', 'content': f"Description: {description} | Sender: UNKNOWN"}
@@ -330,7 +330,7 @@ async def clean_payment_row(row_text):
                 "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
             },
             data=json.dumps({
-                "model": "openai/gpt-5.2", 
+                "model": "google/gemini-3-flash-preview", 
                 "messages": [
                     {'role': 'user', 'content': prompt}
                 ]

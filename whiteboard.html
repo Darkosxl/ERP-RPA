@@ -1,0 +1,93 @@
+<!-- TODO: Add drag & drop zone for Excel files -->
+<!-- TODO: Add 'Begin' button to start processing -->
+<!-- TODO: For flagged rows: FLAG 404 = name input, FLAG 4000 = payment type dropdown, FLAG POS = both -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Payment Whiteboard</title>
+    <style>
+        body {
+            background: white;
+            font-family: monospace;
+            padding: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background: #f5f5f5;
+        }
+        .processing { background: #fff3cd; }
+        .almost_completed { background: #ffe0b2; }
+        .PAID { background: #c8e6c9; }
+        .flagged { background: #ffcdd2; }
+    </style>
+</head>
+<body>
+    <h2>Payment Whiteboard</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Amount</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Live</th>
+            </tr>
+        </thead>
+        <tbody id="payments"></tbody>
+    </table>
+
+    <script>
+        async function refresh() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                const tbody = document.getElementById('payments');
+                let html = '';
+
+                // Show current processing item first (if any)
+                if (data.current) {
+                    const c = data.current;
+                    html += `<tr class="${c.stage}">
+                        <td>${c.name || '-'}</td>
+                        <td>${c.payment_amount || '-'}</td>
+                        <td>${c.payment_type || '-'}</td>
+                        <td>-</td>
+                        <td>${c.stage === 'processing' ? '🟡' : '🟠'} ${c.stage}</td>
+                    </tr>`;
+                }
+
+                // Show completed payments
+                for (const p of data.payments) {
+                    const isFlagged = p.status && p.status.includes('FLAG');
+                    const rowClass = isFlagged ? 'flagged' : 'PAID';
+                    const icon = isFlagged ? '🔴' : '🟢';
+                    html += `<tr class="${rowClass}">
+                        <td>${p.name}</td>
+                        <td>${p.payment_amount}</td>
+                        <td>${p.payment_type}</td>
+                        <td>${p.status}</td>
+                        <td>${icon}</td>
+                    </tr>`;
+                }
+
+                tbody.innerHTML = html || '<tr><td colspan="5">No payments yet...</td></tr>';
+            } catch (e) {
+                console.error('Refresh error:', e);
+            }
+        }
+
+        // Refresh every second
+        setInterval(refresh, 1000);
+        refresh();
+    </script>
+</body>
+</html>

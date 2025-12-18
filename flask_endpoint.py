@@ -219,7 +219,7 @@ def reply_whatsapp():
                     "Authorization": "Bearer " + os.getenv("OPENROUTER_API_KEY"),
                 },
                 data=json.dumps({
-                    "model": "openai/gpt-5.2", 
+                    "model": "google/gemini-3-flash-preview", 
                     "messages": [
                         {'role': 'system', 'content': SYSTEM_PROMPT},
                         {'role': 'user', 'content': "Analyze this message: " + message}

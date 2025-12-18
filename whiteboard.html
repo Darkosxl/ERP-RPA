@@ -1,4 +1,3 @@
-<!-- TODO: Add drag & drop zone for Excel files -->
 <!-- TODO: Add 'Begin' button to start processing -->
 <!-- TODO: For flagged rows: FLAG 404 = name input, FLAG 4000 = payment type dropdown, FLAG POS = both -->
 <!DOCTYPE html>
@@ -28,10 +27,36 @@
         .almost_completed { background: #ffe0b2; }
         .PAID { background: #c8e6c9; }
         .flagged { background: #ffcdd2; }
+
+        /* Drop zone */
+        .dropzone {
+            border: 3px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .dropzone:hover { border-color: #888; background: #fafafa; }
+        .dropzone.dragover { border-color: #4CAF50; background: #e8f5e9; }
+        .dropzone.has-file { border-color: #2196F3; background: #e3f2fd; }
+        .dropzone-icon { font-size: 48px; }
+        .dropzone-text { color: #666; margin-top: 10px; }
+        .dropzone-filename { margin-top: 10px; font-weight: bold; color: #2196F3; }
     </style>
 </head>
 <body>
     <h2>Payment Whiteboard</h2>
+
+    <!-- Drag & Drop Zone -->
+    <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-text">Drag & drop Excel file here (.xls, .xlsx)<br>or click to browse</div>
+        <div class="dropzone-filename" id="filename"></div>
+        <input type="file" id="fileInput" accept=".xls,.xlsx" style="display:none">
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -88,6 +113,61 @@
         // Refresh every second
         setInterval(refresh, 1000);
         refresh();
+
+        // Drag & Drop handling
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const filenameDiv = document.getElementById('filename');
+
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) uploadFile(file);
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+        });
+
+        async function uploadFile(file) {
+            if (!file.name.match(/\.xlsx?$/i)) {
+                alert('Only .xls and .xlsx files allowed');
+                return;
+            }
+
+            filenameDiv.textContent = 'Uploading: ' + file.name;
+            dropzone.classList.add('has-file');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (data.success) {
+                    filenameDiv.textContent = 'Uploaded: ' + file.name;
+                } else {
+                    filenameDiv.textContent = 'Error: ' + (data.error || 'Upload failed');
+                    dropzone.classList.remove('has-file');
+                }
+            } catch (err) {
+                filenameDiv.textContent = 'Error: ' + err.message;
+                dropzone.classList.remove('has-file');
+            }
+        }
     </script>
 </body>
 </html>

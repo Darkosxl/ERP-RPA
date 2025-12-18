@@ -15,6 +15,7 @@ from rpa_helper import infer_payment_type_from_amount
 import threading
 import asyncio
 import dotenv
+import sys
 
 dotenv.load_dotenv()
 
@@ -34,6 +35,11 @@ Rules:
 5. Do not output markdown, code blocks, or explanation. Just raw JSON.
 """
 
+def get_resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(__file__), relative_path)
+    
 def cleanup_old_files():
     """Deletes all .xls, .xlsx, and .csv files in the current directory."""
     try:
@@ -305,7 +311,34 @@ def status():
 
 @app.route("/whiteboard", methods=["GET"])
 def whiteboard():
-    return send_file("whiteboard.html")
+    return send_file(get_resource_path("whiteboard.html"))
+
+@app.route("/upload", methods=["POST"])
+def upload_excel():
+    """Handle Excel file upload from drag & drop"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Check extension
+    if not file.filename.endswith(('.xls', '.xlsx')):
+        return jsonify({"error": "Only .xls and .xlsx files allowed"}), 400
+
+    # Cleanup old files
+    cleanup_old_files()
+    if os.path.isfile("result_table.xlsx"):
+        os.remove("result_table.xlsx")
+
+    # Save the uploaded file
+    filename = file.filename
+    file.save(filename)
+
+    return jsonify({"success": True, "filename": filename})
 
 if __name__ == "__main__":
+    import webbrowser
+    webbrowser.open("http://localhost:3987/whiteboard")
     app.run(port=3987)

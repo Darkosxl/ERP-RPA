@@ -83,8 +83,10 @@ def find_starting_row_from_bakiye(bakiye_column, son_kasa_miktari):
         return 0
 
     try:
-        # Parse the target value - only take integer part
-        target = int(float(str(son_kasa_miktari).replace(',', '.').replace(' ', '')))
+        # Parse the target value - strip commas and spaces, then convert
+        # "38,594.30" → "38594.30" → 38594
+        cleaned = str(son_kasa_miktari).replace(',', '').replace(' ', '')
+        target = int(float(cleaned))
     except (ValueError, TypeError):
         print(f"Could not parse son_kasa_miktari: {son_kasa_miktari}")
         return 0

@@ -212,11 +212,11 @@ async def get_human_name(description):
     if re.findall("^PK", description):
         return "PAYMENT_BY_POS"
     if re.findall("^FAST", description):
-        parts = re.split("-", description)
+        parts = description.split("-")
         #isim
-        name = parts[1]  
-        #aciklama
-        info = parts[2]
+        name = parts[1]
+        #aciklama - everything after the second "-"
+        info = "-".join(parts[2:]) if len(parts) > 2 else ""
         #print("FAST",name,info)
         if len(info) == 0:
             return name
@@ -253,9 +253,11 @@ async def get_human_name(description):
             return name
 
     elif re.findall("^CEP ŞUBE", description):
-        parts = re.split("-", description)
-        info = parts[2]
-        name = parts[3]
+        parts = description.split("-")
+        #name - everything after the last "-"
+        name = parts[-1]
+        #aciklama - everything between first "-" and last "-"
+        info = "-".join(parts[1:-1]) if len(parts) > 2 else ""
         #print("CEP",name,info.strip()+"info")
         if len(info.strip()) == 0:
             return name
@@ -583,28 +585,29 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
     
 
     if payment_amount == 1200 or payment_amount == 900:
-        if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
-            print("Logic: 1200 -> YAZILI SINAV HARCI (BORC VAR)")
+        # Check PAID first - if already paid, skip
+        if check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
+            print("Logic: 1200 -> YAZILI SINAV HARCI (BORC ODENMIS)")
+            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS"])
+            return payment_types, cached_data
+        elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
             print("Logic: 1200 -> YAZILI SINAV HARCI (BORC VAR)")
             payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
             return payment_types, cached_data
-        elif check_paid("YZL. SNV. HARCI", payments_paid):
-            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS"])
-            return payment_types, cached_data
-        else: 
+        else:
             payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
             return payment_types, cached_data
     if payment_amount == 1600 or payment_amount == 1350:
-        if check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed):
-            print("Logic: 1600 -> UYGULAMA SINAV HARCI (BORC VAR)")
+        # Check PAID first - if already paid, skip
+        if check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
+            print("Logic: 1600 -> UYGULAMA SINAV HARCI (BORC ODENMIS)")
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
+            return payment_types, cached_data
+        elif check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed):
             print("Logic: 1600 -> UYGULAMA SINAV HARCI (BORC VAR)")
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
             return payment_types, cached_data
-
-        elif check_paid("UYG. SNV. HARCI", payments_paid):
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS"])
-            return payment_types, cached_data
-        else: 
+        else:
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
             return payment_types, cached_data
 

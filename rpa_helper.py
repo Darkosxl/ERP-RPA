@@ -131,20 +131,20 @@ def check_owed(keyword, payment_owed):
     return any(keyword in row for row in payment_owed)
 
 def check_owed_with_amount(keyword, payment_owed, expected_amount):
-    """Check if keyword exists in payment_owed AND the TUTAR matches expected_amount."""
+    """Check if keyword exists in payment_owed AND the TUTAR matches expected_amount.
+    If keyword is None, just checks if expected_amount exists in any row."""
+    
     for row in payment_owed:
-        if keyword in row:
-            # Extract amount from row - Turkish format like "1.600,00" at the end
-            # Find all number patterns that look like amounts
-            import re
-            amounts = re.findall(r'[\d.]+,\d{2}', row)
-            if amounts:
-                # Take the last amount (TUTAR is usually at the end)
-                tutar_str = amounts[-1]
-                # Convert Turkish format: "1.600,00" -> 1600
-                tutar = int(float(tutar_str.replace('.', '').replace(',', '.')))
-                if tutar == expected_amount:
-                    return True
+        # If keyword provided, require it to be in the row
+        if keyword is not None and keyword not in row:
+            continue
+        # Extract amount from row - Turkish format like "1.600,00" at the end
+        amounts = re.findall(r'[\d.]+,\d{2}', row)
+        if amounts:
+            tutar_str = amounts[-1]
+            tutar = int(float(tutar_str.replace('.', '').replace(',', '.')))
+            if tutar == expected_amount:
+                return True
     return False
 
 def check_paid(keyword, payments_paid):
@@ -664,6 +664,26 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
     #COMPLEX PAYMENTS
     if payment_copy > 1600:
         
+        # NEW: Flexible remainder matching - if remainder equals any owed taksit amount
+        # Example: 2200 - 1600 = 600, and TAKSİT 600 is owed → UYGULAMA + TAKSİT
+        remainder_uygulama = payment_copy - 1600
+        remainder_yazili = payment_copy - 1200
+        
+        if check_owed_with_amount("UYG. SNV. HARCI", payment_owed, 1600) or check_owed_with_amount("UYGULAMA SINAV HARCI", payment_owed, 1600):
+            if check_owed_with_amount(None, payments_taksit_owed, remainder_uygulama):
+                print(f"Logic: {payment_copy} = 1600 (UYGULAMA) + {remainder_uygulama} (TAKSİT owed)")
+                payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
+                return payment_types, cached_data
+        
+        if check_owed_with_amount("YZL. SNV. HARCI", payment_owed, 1200) or check_owed_with_amount("YAZILI SINAV HARCI", payment_owed, 1200):
+            if check_owed_with_amount(None, payments_taksit_owed, remainder_yazili):
+                print(f"Logic: {payment_copy} = 1200 (YAZILI) + {remainder_yazili} (TAKSİT owed)")
+                payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+                payment_types.append(["TAKSİT", "BORC VAR"])
+                return payment_types, cached_data
+        
+        # Original modulo-based logic (fallback)
         if (payment_copy - 1600)%500 == 0 and payment_copy - 1600 != 4000 and (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed) or check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid)):
             if (check_owed("UYG. SNV. HARCI", payment_owed) or check_owed("UYGULAMA SINAV HARCI", payment_owed)):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
@@ -720,6 +740,30 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             elif check_paid("BELGE ÜCRETİ", payments_paid):
                 payment_types.append(["BELGE ÜCRETİ", "BORC ODENMIS"])
                 payment_types.append(["DORTBIN", "BORC ODENMIS"])
+        
+        # NEW: BAŞARISIZ ADAY EĞİTİMİ combo logic
+        # If payment > 4000, owes BAŞARISIZ 4000, and remainder matches any other owed item
+        elif payment_copy > 4000 and check_owed("BAŞARISIZ ADAY EĞİTİMİ", payment_owed):
+            remainder_basarisiz = payment_copy - 4000
+            # Check if remainder matches any owed amount in payment_owed OR payments_taksit_owed
+            if check_owed_with_amount(None, payment_owed, remainder_basarisiz) or check_owed_with_amount(None, payments_taksit_owed, remainder_basarisiz):
+                print(f"Logic: {payment_copy} = 4000 (BAŞARISIZ) + {remainder_basarisiz} (other owed)")
+                payment_types.append(["BAŞARISIZ ADAY EĞİTİMİ", "BORC VAR"])
+                # Figure out what the remainder is
+                if check_owed_with_amount(None, payments_taksit_owed, remainder_basarisiz):
+                    payment_types.append(["TAKSİT", "BORC VAR"])
+                elif check_owed_with_amount("ÖZEL DERS", payment_owed, remainder_basarisiz):
+                    payment_types.append(["ÖZEL DERS", "BORC VAR"])
+                elif check_owed_with_amount("BELGE ÜCRETİ", payment_owed, remainder_basarisiz):
+                    payment_types.append(["BELGE ÜCRETİ", "BORC VAR"])
+                elif check_owed_with_amount("UYG", payment_owed, remainder_basarisiz) or check_owed_with_amount("UYGULAMA", payment_owed, remainder_basarisiz):
+                    payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR"])
+                elif check_owed_with_amount("YZL", payment_owed, remainder_basarisiz) or check_owed_with_amount("YAZILI", payment_owed, remainder_basarisiz):
+                    payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
+                else:
+                    payment_types.append(["BILINMIYOR", f"FLAG: {remainder_basarisiz}"])
+                return payment_types, cached_data
+        
         elif payment_copy > 4000 and check_owed("TAKSİT", payments_taksit_owed) and get_owed_taksit(payments_taksit_owed) >= payment_copy and not check_date_if_paid(date_of_payment, payments_taksit_paid):
             payment_types.append(["TAKSİT", "BORC VAR"])
 

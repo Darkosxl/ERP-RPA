@@ -17,6 +17,7 @@ from datetime import datetime
 import requests
 import json
 from icu import Locale,UnicodeString
+import app_paths
 
 
 SYSTEM_PROMPT = """You are an expert entity extraction system specialized in identifying Turkish human names in payment descriptions.
@@ -31,8 +32,10 @@ Rules:
 6. If no valid names are found, output empty list: []
 """
 def clear_processing_status():
-    if os.path.exists("current_status.json"):
-        os.remove("current_status.json")
+    status_file = app_paths.status_path()
+    if os.path.exists(status_file):
+        os.remove(status_file)
+
 def update_processing_status(name, stage, payment_type=None, payment_amount=None):
     # Stages:'processing', 'almost_completed', 'completed', 'flagged'
     status = {
@@ -41,16 +44,17 @@ def update_processing_status(name, stage, payment_type=None, payment_amount=None
         "payment_type":payment_type,
         "payment_amount":payment_amount
     }
-    with open("current_status.json", "w") as f:
+    with open(app_paths.status_path(), "w") as f:
         json.dump(status, f)
 
 def save_payment_record(row):
-    if os.path.exists("payments_recorded_by_bot.csv"):
-        with open("payments_recorded_by_bot.csv", "a", newline="") as f:
+    csv_path = app_paths.payments_csv_path()
+    if os.path.exists(csv_path):
+        with open(csv_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(row)
     else:
-        with open("payments_recorded_by_bot.csv", "w", newline="") as f:
+        with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["name", "payment_amount", "payment_type", "status"])
             writer.writerow(row)

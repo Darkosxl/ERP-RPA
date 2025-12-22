@@ -130,10 +130,133 @@
         .stop-btn.hidden {
             display: none;
         }
+
+        /* Credentials section */
+        .credentials-section {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #fafafa;
+        }
+        .credentials-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        .credentials-row {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .credential-input-container {
+            display: flex;
+            flex-direction: column;
+            min-width: 180px;
+        }
+        .credential-input-container label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .credential-input-container input {
+            padding: 10px;
+            font-size: 14px;
+            border: 2px solid #ccc;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+        .credential-input-container input:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+        .save-secrets-btn {
+            padding: 10px 25px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #2196F3;
+            color: white;
+            transition: all 0.2s;
+        }
+        .save-secrets-btn:hover {
+            background: #1976D2;
+        }
+        .save-secrets-btn.saving {
+            background: #90CAF9;
+            cursor: wait;
+        }
+        .save-secrets-btn.saved {
+            background: #4CAF50;
+        }
+
+        /* Logo */
+        .logo-corner {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        .logo-corner:hover {
+            opacity: 1;
+        }
+        .logo-corner img {
+            width: 48px;
+            height: 48px;
+        }
+
+        /* Close button */
+        .close-app-btn {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 50%;
+            background: #f44336;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .close-app-btn:hover {
+            background: #d32f2f;
+            transform: scale(1.1);
+        }
     </style>
 </head>
 <body>
     <h2>Ödeme Tahtası</h2>
+
+    <!-- Credentials Section -->
+    <div class="credentials-section">
+        <h3>Giriş Bilgileri</h3>
+        <div class="credentials-row">
+            <div class="credential-input-container">
+                <label for="institutionCode">Kurum Kodu</label>
+                <input type="text" id="institutionCode" placeholder="örn: MTSK3449049">
+            </div>
+            <div class="credential-input-container">
+                <label for="loginEmail">Kullanıcı Adı (E-posta)</label>
+                <input type="text" id="loginEmail" placeholder="örn: email@example.com">
+            </div>
+            <div class="credential-input-container">
+                <label for="loginPassword">Şifre</label>
+                <input type="password" id="loginPassword" placeholder="Şifreniz">
+            </div>
+            <button id="saveSecretsBtn" class="save-secrets-btn">Kaydet</button>
+        </div>
+    </div>
 
     <!-- Drag & Drop Zone -->
     <div class="dropzone" id="dropzone">
@@ -168,6 +291,75 @@
     </table>
 
     <script>
+        // Load secrets on page load
+        async function loadSecrets() {
+            try {
+                const res = await fetch('/load-secrets');
+                const data = await res.json();
+                if (data.institution_code) {
+                    document.getElementById('institutionCode').value = data.institution_code;
+                }
+                if (data.login) {
+                    document.getElementById('loginEmail').value = data.login;
+                }
+                if (data.password) {
+                    document.getElementById('loginPassword').value = data.password;
+                }
+            } catch (e) {
+                console.log('No saved secrets found or error loading:', e);
+            }
+        }
+
+        // Save secrets button handler
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSecrets();
+
+            const saveBtn = document.getElementById('saveSecretsBtn');
+            saveBtn.addEventListener('click', async () => {
+                const institutionCode = document.getElementById('institutionCode').value.trim();
+                const login = document.getElementById('loginEmail').value.trim();
+                const password = document.getElementById('loginPassword').value;
+
+                if (!institutionCode || !login || !password) {
+                    alert('Lütfen tüm alanları doldurun');
+                    return;
+                }
+
+                saveBtn.className = 'save-secrets-btn saving';
+                saveBtn.textContent = 'Kaydediliyor...';
+
+                try {
+                    const res = await fetch('/save-secrets', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            institution_code: institutionCode,
+                            login: login,
+                            password: password
+                        })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        saveBtn.className = 'save-secrets-btn saved';
+                        saveBtn.textContent = 'Kaydedildi!';
+                        setTimeout(() => {
+                            saveBtn.className = 'save-secrets-btn';
+                            saveBtn.textContent = 'Kaydet';
+                        }, 2000);
+                    } else {
+                        alert('Kaydetme hatası: ' + (data.error || 'Bilinmeyen hata'));
+                        saveBtn.className = 'save-secrets-btn';
+                        saveBtn.textContent = 'Kaydet';
+                    }
+                } catch (err) {
+                    alert('Kaydetme hatası: ' + err.message);
+                    saveBtn.className = 'save-secrets-btn';
+                    saveBtn.textContent = 'Kaydet';
+                }
+            });
+        });
+
         async function refresh() {
             try {
                 const res = await fetch('/status');
@@ -361,6 +553,26 @@
                 updateButtonState();
             }
         }
+    </script>
+
+    <!-- Logo -->
+    <div class="logo-corner">
+        <img src="/logo.png" alt="Golden Mouse RPA" title="Golden Mouse RPA">
+    </div>
+
+    <!-- Close button -->
+    <button class="close-app-btn" id="closeAppBtn" title="Uygulamayı Kapat">×</button>
+    <script>
+        document.getElementById('closeAppBtn').addEventListener('click', async () => {
+            if (confirm('Uygulamayı kapatmak istediğinize emin misiniz?')) {
+                try {
+                    await fetch('/shutdown', { method: 'POST' });
+                } catch (e) {
+                    // Expected - server shuts down
+                }
+                window.close();
+            }
+        });
     </script>
 </body>
 </html>

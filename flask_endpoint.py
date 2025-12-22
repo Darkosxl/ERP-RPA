@@ -13,6 +13,7 @@ import signal
 import pandas as pd
 import rpa_executioner as rpaexec
 from rpa_helper import infer_payment_type_from_amount, clear_processing_status
+import app_paths
 import threading
 import multiprocessing
 import asyncio
@@ -52,13 +53,14 @@ def get_resource_path(relative_path):
     return os.path.join(os.path.dirname(__file__), relative_path)
     
 def cleanup_old_files():
-    """Deletes all .xls, .xlsx, and .csv files in the current directory."""
+    """Deletes all .xls, .xlsx, and .csv files in the uploads directory."""
     try:
-        files = os.listdir('.')
+        uploads = app_paths.uploads_dir()
+        files = os.listdir(uploads)
         for file in files:
             if file.endswith('.xls') or file.endswith('.xlsx') or file.endswith('.csv'):
                 try:
-                    os.remove(file)
+                    os.remove(os.path.join(uploads, file))
                     print(f"Deleted old file: {file}")
                 except Exception as e:
                     print(f"Error deleting {file}: {e}")
@@ -75,8 +77,8 @@ def run_rpa_background(filename, user_phone):
         
         # Save the result for later queries (converting the CSV from RPA to Excel for the text handler)
         try:
-            df = pd.read_csv("payments_recorded_by_bot.csv")
-            df.to_excel("result_table.xlsx", index=False)
+            df = pd.read_csv(app_paths.payments_csv_path())
+            df.to_excel(app_paths.result_table_path(), index=False)
         except Exception as e:
             print(f"Error processing CSV to Excel: {e}")
 
@@ -129,11 +131,11 @@ def run_unique_process_background(name, payment_type, payment_amount, row_index,
         ))
         
         # Update the Excel file
-        df = pd.read_excel("result_table.xlsx")
+        df = pd.read_excel(app_paths.result_table_path())
         df.at[row_index, "status"] = "PAID"
         df.at[row_index, "name"] = name
         df.at[row_index, "payment_type"] = payment_type
-        df.to_excel("result_table.xlsx", index=False)
+        df.to_excel(app_paths.result_table_path(), index=False)
         
         # Send success notification
         account_sid = os.getenv('TWILIO_ACCOUNT_SID')
@@ -176,8 +178,8 @@ def reply_whatsapp():
         # Cleanup old files before downloading new one
         cleanup_old_files()
         
-        if os.path.isfile("result_table.xlsx"):
-            os.remove("result_table.xlsx")
+        if os.path.isfile(app_paths.result_table_path()):
+            os.remove(app_paths.result_table_path())
         media_url = request.form.get("MediaUrl0")
         content_type = request.form.get(f'MediaContentType{0}')
         ext = mimetypes.guess_extension(content_type) or '.bin'
@@ -219,14 +221,14 @@ def reply_whatsapp():
         
         try:
             
-            if not os.path.exists("result_table.xlsx"):
+            if not os.path.exists(app_paths.result_table_path()):
                 wp_response.message("Henuz bir islem yapilmadi veya sonuc tablosu bulunamadi.")
                 return Response(str(wp_response), mimetype="text/xml")
 
-            df = pd.read_excel("result_table.xlsx")
+            df = pd.read_excel(app_paths.result_table_path())
             
             if (df["status"] == "PAID").all():
-                os.remove("result_table.xlsx")
+                os.remove(app_paths.result_table_path())
                 wp_response.message("Tüm işlemler tamamlandı! Elinize sağlık Hocam! Defteri kapiyorum.")
                 return Response(str(wp_response), mimetype="text/xml")
             
@@ -306,15 +308,15 @@ def status():
         "current": None
     }
 
-    if os.path.exists("payments_recorded_by_bot.csv"):
+    if os.path.exists(app_paths.payments_csv_path()):
         try:
-            df = pd.read_csv("payments_recorded_by_bot.csv")
+            df = pd.read_csv(app_paths.payments_csv_path())
             result["payments"] = df.to_dict(orient="records")
         except:
             pass
-    if os.path.exists("current_status.json"):
+    if os.path.exists(app_paths.status_path()):
         try:
-            with open("current_status.json", "r") as f:
+            with open(app_paths.status_path(), "r") as f:
                 result["current"] = json.load(f)
         except:
             pass
@@ -323,6 +325,51 @@ def status():
 @app.route("/whiteboard", methods=["GET"])
 def whiteboard():
     return send_file(get_resource_path("whiteboard.html"))
+
+@app.route("/logo.png", methods=["GET"])
+def logo():
+    return send_file(get_resource_path("public/goldenrat.png"), mimetype="image/png")
+
+@app.route("/save-secrets", methods=["POST"])
+def save_secrets():
+    """Save credentials to secrets.json"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        institution_code = data.get('institution_code')
+        login = data.get('login')
+        password = data.get('password')
+
+        if not institution_code or not login or not password:
+            return jsonify({"error": "All fields are required"}), 400
+
+        secrets = {
+            "institution_code": institution_code,
+            "login": login,
+            "password": password
+        }
+
+        with open(app_paths.secrets_path(), "w") as f:
+            json.dump(secrets, f, indent=2)
+
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/load-secrets", methods=["GET"])
+def load_secrets():
+    """Load credentials from secrets.json"""
+    try:
+        if os.path.exists(app_paths.secrets_path()):
+            with open(app_paths.secrets_path(), "r") as f:
+                secrets = json.load(f)
+            return jsonify(secrets)
+        else:
+            return jsonify({})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Track currently uploaded file for /start endpoint
 current_uploaded_file = None
@@ -347,11 +394,11 @@ def upload_excel():
 
     # Cleanup old files
     cleanup_old_files()
-    if os.path.isfile("result_table.xlsx"):
-        os.remove("result_table.xlsx")
+    if os.path.isfile(app_paths.result_table_path()):
+        os.remove(app_paths.result_table_path())
 
-    # Save the uploaded file
-    filename = file.filename
+    # Save the uploaded file to app data directory
+    filename = app_paths.get_upload_path(file.filename)
     file.save(filename)
     current_uploaded_file = filename
 
@@ -381,10 +428,11 @@ def start_rpa():
 
     # Check if file was uploaded
     if not current_uploaded_file or not os.path.isfile(current_uploaded_file):
-        # Try to find any .xls/.xlsx file in current directory
-        files = [f for f in os.listdir('.') if f.endswith(('.xls', '.xlsx')) and not f.startswith('result')]
+        # Try to find any .xls/.xlsx file in uploads directory
+        uploads = app_paths.uploads_dir()
+        files = [f for f in os.listdir(uploads) if f.endswith(('.xls', '.xlsx')) and not f.startswith('result')]
         if files:
-            current_uploaded_file = files[0]
+            current_uploaded_file = os.path.join(uploads, files[0])
         else:
             return jsonify({"error": "No Excel file uploaded. Please upload a file first."}), 400
 
@@ -431,6 +479,22 @@ def stop_rpa():
         current_rpa_process = None
         clear_processing_status()
         return jsonify({"success": True, "message": "State reset."})
+
+@app.route("/shutdown", methods=["POST"])
+def shutdown():
+    """Shutdown the application"""
+    # Stop any running RPA process first
+    global current_rpa_process
+    if current_rpa_process and current_rpa_process.is_alive():
+        try:
+            pid = current_rpa_process.pid
+            os.system(f"pkill -P {pid} 2>/dev/null")
+            current_rpa_process.terminate()
+        except:
+            pass
+
+    # Shutdown the Flask server
+    os._exit(0)
 
 if __name__ == "__main__":
     import webbrowser

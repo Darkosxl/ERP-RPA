@@ -1,4 +1,55 @@
-venv
+# Virtual environment
+venv/
+.venv/
+
+# Environment & secrets
 .env
+secrets.json
+
+# Test files
 test.py
 tester.py
+
+# Build docs
+BUILD.md
+
+# PyInstaller build artifacts
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Generated app files
+current_status.json
+payments_recorded_by_bot.csv
+result_table.xlsx
+event_log.txt
+*.xls
+*.xlsx
+*.csv
+
+# Screenshots
+screenshot*.png
+
+# Icon (generated from PNG)
+icon.ico
+
+# Logs
+*.log
+*logs.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

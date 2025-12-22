@@ -1,0 +1,68 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: Golden-Mouse-RPA-Windows
+            extension: .exe
+          - os: macos-latest
+            artifact: Golden-Mouse-RPA-macOS
+            extension: ''
+          - os: ubuntu-latest
+            artifact: Golden-Mouse-RPA-Linux
+            extension: ''
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller otoban_faresi.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/Golden-Mouse-RPA${{ matrix.extension }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/Golden-Mouse-RPA-Windows/Golden-Mouse-RPA.exe
+            artifacts/Golden-Mouse-RPA-macOS/Golden-Mouse-RPA
+            artifacts/Golden-Mouse-RPA-Linux/Golden-Mouse-RPA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -15,7 +15,28 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import dotenv
 import easyocr
+import json
+import app_paths
 dotenv.load_dotenv()
+
+def get_credentials():
+    """Load credentials from secrets.json, fallback to .env"""
+    try:
+        secrets_file = app_paths.secrets_path()
+        if os.path.exists(secrets_file):
+            with open(secrets_file, "r") as f:
+                secrets = json.load(f)
+            if secrets.get("institution_code") and secrets.get("login") and secrets.get("password"):
+                return secrets
+    except Exception as e:
+        print(f"Error reading secrets.json: {e}")
+
+    # Fallback to .env
+    return {
+        "institution_code": os.getenv("institution_code"),
+        "login": os.getenv("login"),
+        "password": os.getenv("password")
+    }
 
 
 
@@ -124,17 +145,18 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
         response = await page.goto("https://kurs.goldennet.com.tr/giris.php")
         
         print("Typing login credentials...")
-        await human_type(page, "#kurumkodu", os.getenv("institution_code"))
+        creds = get_credentials()
+        await human_type(page, "#kurumkodu", creds["institution_code"])
         await asyncio.sleep(random.uniform(0.7, 1.9))
-        
-        await human_type(page, "#kullaniciadi", os.getenv("login"))
+
+        await human_type(page, "#kullaniciadi", creds["login"])
         await asyncio.sleep(random.uniform(1.1, 3.2))
-        
-        await human_type(page, "#kullanicisifresi", os.getenv("password"))
+
+        await human_type(page, "#kullanicisifresi", creds["password"])
         await asyncio.sleep(random.uniform(0.9, 3.1))
-        
+
         await human_button_click(page, "#btngiris")
-        
+
         await asyncio.sleep(random.uniform(1.5, 4.1))
 
         # Close the notification popup
@@ -352,17 +374,18 @@ async def RPAexecutioner_GoldenUniqueProcess(name_surname=None, payment_type=Non
         response = await page.goto("https://kurs.goldennet.com.tr/giris.php")
         
         print("Typing login credentials...")
-        await human_type(page, "#kurumkodu", os.getenv("institution_code"))
+        creds = get_credentials()
+        await human_type(page, "#kurumkodu", creds["institution_code"])
         await asyncio.sleep(random.uniform(0.7, 1.9))
-        
-        await human_type(page, "#kullaniciadi", os.getenv("login"))
+
+        await human_type(page, "#kullaniciadi", creds["login"])
         await asyncio.sleep(random.uniform(1.1, 3.2))
-        
-        await human_type(page, "#kullanicisifresi", os.getenv("password"))
+
+        await human_type(page, "#kullanicisifresi", creds["password"])
         await asyncio.sleep(random.uniform(0.9, 3.1))
-        
+
         await human_button_click(page, "#btngiris")
-        
+
         await asyncio.sleep(random.uniform(1.5, 4.1))
 
         # Notification popup code - commented out (no longer needed)

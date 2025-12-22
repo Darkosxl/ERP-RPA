@@ -2,31 +2,48 @@
 <!-- TODO: For flagged rows: FLAG 404 = name input, FLAG 4000 = payment type dropdown, FLAG POS = both -->
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
-    <title>Ödeme Tahtası</title>
+    <title>Kasa</title>
     <style>
         body {
             background: white;
             font-family: monospace;
             padding: 20px;
         }
+
         table {
             width: 100%;
             border-collapse: collapse;
         }
-        th, td {
+
+        th,
+        td {
             border: 1px solid #ccc;
             padding: 10px;
             text-align: left;
         }
+
         th {
             background: #f5f5f5;
         }
-        .processing { background: #fff3cd; }
-        .almost_completed { background: #ffe0b2; }
-        .PAID { background: #c8e6c9; }
-        .flagged { background: #ffcdd2; }
+
+        .processing {
+            background: #fff3cd;
+        }
+
+        .almost_completed {
+            background: #ffe0b2;
+        }
+
+        .PAID {
+            background: #c8e6c9;
+        }
+
+        .flagged {
+            background: #ffcdd2;
+        }
 
         /* Drop zone */
         .dropzone {
@@ -38,12 +55,36 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        .dropzone:hover { border-color: #888; background: #fafafa; }
-        .dropzone.dragover { border-color: #4CAF50; background: #e8f5e9; }
-        .dropzone.has-file { border-color: #2196F3; background: #e3f2fd; }
-        .dropzone-icon { font-size: 48px; }
-        .dropzone-text { color: #666; margin-top: 10px; }
-        .dropzone-filename { margin-top: 10px; font-weight: bold; color: #2196F3; }
+
+        .dropzone:hover {
+            border-color: #888;
+            background: #fafafa;
+        }
+
+        .dropzone.dragover {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+        }
+
+        .dropzone.has-file {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        .dropzone-icon {
+            font-size: 48px;
+        }
+
+        .dropzone-text {
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .dropzone-filename {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #2196F3;
+        }
 
         /* Start button */
         .start-btn {
@@ -58,23 +99,28 @@
             cursor: pointer;
             transition: all 0.2s;
         }
+
         .start-btn.ready {
             background: #4CAF50;
             color: white;
         }
+
         .start-btn.ready:hover {
             background: #388E3C;
         }
+
         .start-btn.disabled {
             background: #ccc;
             color: #666;
             cursor: not-allowed;
         }
+
         .start-btn.running {
             background: #FF9800;
             color: white;
             cursor: wait;
         }
+
         .status-msg {
             text-align: center;
             padding: 10px;
@@ -82,8 +128,18 @@
             border-radius: 5px;
             display: none;
         }
-        .status-msg.error { display: block; background: #ffcdd2; color: #c62828; }
-        .status-msg.success { display: block; background: #c8e6c9; color: #2e7d32; }
+
+        .status-msg.error {
+            display: block;
+            background: #ffcdd2;
+            color: #c62828;
+        }
+
+        .status-msg.success {
+            display: block;
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
 
         /* Start controls container */
         .start-controls {
@@ -92,16 +148,19 @@
             margin-bottom: 20px;
             align-items: stretch;
         }
+
         .kasa-input-container {
             display: flex;
             flex-direction: column;
             min-width: 200px;
         }
+
         .kasa-input-container label {
             font-size: 12px;
             color: #666;
             margin-bottom: 4px;
         }
+
         .kasa-input-container input {
             padding: 12px;
             font-size: 16px;
@@ -109,10 +168,12 @@
             border-radius: 8px;
             font-family: monospace;
         }
+
         .kasa-input-container input:focus {
             outline: none;
             border-color: #4CAF50;
         }
+
         .stop-btn {
             padding: 15px 30px;
             font-size: 18px;
@@ -124,9 +185,11 @@
             color: white;
             transition: all 0.2s;
         }
+
         .stop-btn:hover {
             background: #d32f2f;
         }
+
         .stop-btn.hidden {
             display: none;
         }
@@ -139,27 +202,32 @@
             margin-bottom: 20px;
             background: #fafafa;
         }
+
         .credentials-section h3 {
             margin: 0 0 15px 0;
             color: #333;
             font-size: 16px;
         }
+
         .credentials-row {
             display: flex;
             gap: 15px;
             align-items: flex-end;
             flex-wrap: wrap;
         }
+
         .credential-input-container {
             display: flex;
             flex-direction: column;
             min-width: 180px;
         }
+
         .credential-input-container label {
             font-size: 12px;
             color: #666;
             margin-bottom: 4px;
         }
+
         .credential-input-container input {
             padding: 10px;
             font-size: 14px;
@@ -167,10 +235,12 @@
             border-radius: 6px;
             font-family: monospace;
         }
+
         .credential-input-container input:focus {
             outline: none;
             border-color: #2196F3;
         }
+
         .save-secrets-btn {
             padding: 10px 25px;
             font-size: 14px;
@@ -182,13 +252,16 @@
             color: white;
             transition: all 0.2s;
         }
+
         .save-secrets-btn:hover {
             background: #1976D2;
         }
+
         .save-secrets-btn.saving {
             background: #90CAF9;
             cursor: wait;
         }
+
         .save-secrets-btn.saved {
             background: #4CAF50;
         }
@@ -201,9 +274,11 @@
             opacity: 0.7;
             transition: opacity 0.2s;
         }
+
         .logo-corner:hover {
             opacity: 1;
         }
+
         .logo-corner img {
             width: 48px;
             height: 48px;
@@ -227,16 +302,18 @@
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
+
         .close-app-btn:hover {
             background: #d32f2f;
             transform: scale(1.1);
         }
     </style>
 </head>
+
 <body>
-    <h2>Ödeme Tahtası</h2>
+    <h2>Kasa</h2>
 
     <!-- Credentials Section -->
     <div class="credentials-section">
@@ -261,7 +338,8 @@
     <!-- Drag & Drop Zone -->
     <div class="dropzone" id="dropzone">
         <div class="dropzone-icon">📁</div>
-        <div class="dropzone-text">Excel dosyasını buraya sürükleyip bırakın (.xls, .xlsx)<br>veya tıklayarak seçin</div>
+        <div class="dropzone-text">Excel dosyasını buraya sürükleyip bırakın (.xls, .xlsx)<br>veya tıklayarak seçin
+        </div>
         <div class="dropzone-filename" id="filename"></div>
         <input type="file" id="fileInput" accept=".xls,.xlsx" style="display:none">
     </div>
@@ -559,20 +637,6 @@
     <div class="logo-corner">
         <img src="/logo.png" alt="Golden Mouse RPA" title="Golden Mouse RPA">
     </div>
-
-    <!-- Close button -->
-    <button class="close-app-btn" id="closeAppBtn" title="Uygulamayı Kapat">×</button>
-    <script>
-        document.getElementById('closeAppBtn').addEventListener('click', async () => {
-            if (confirm('Uygulamayı kapatmak istediğinize emin misiniz?')) {
-                try {
-                    await fetch('/shutdown', { method: 'POST' });
-                } catch (e) {
-                    // Expected - server shuts down
-                }
-                window.close();
-            }
-        });
-    </script>
 </body>
+
 </html>

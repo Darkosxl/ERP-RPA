@@ -21,10 +21,16 @@ import dotenv
 import sys
 import logging
 
-# Fix multiprocessing for PyInstaller on macOS
-# macOS uses 'spawn' by default which doesn't work well with PyInstaller bundles
-# 'fork' ensures child processes inherit parent's state (paths, imports, etc.)
-if sys.platform != 'win32':
+# Fix multiprocessing for macOS with EasyOCR/GPU
+# 'spawn' is required on macOS because 'fork' causes crashes with Metal Performance Shaders (MPS)
+# when EasyOCR initializes the GPU. 'spawn' starts a fresh Python process.
+# On Linux, 'fork' works fine and is preferred for PyInstaller compatibility.
+if sys.platform == 'darwin':  # macOS
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass  # Already set
+elif sys.platform != 'win32':  # Linux
     try:
         multiprocessing.set_start_method('fork', force=True)
     except RuntimeError:

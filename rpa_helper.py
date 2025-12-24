@@ -50,15 +50,22 @@ def update_processing_status(name, stage, payment_type=None, payment_amount=None
 
 def save_payment_record(row):
     csv_path = app_paths.payments_csv_path()
+    app_paths.debug_log(f"[RPA] Saving to: {csv_path}")
+    app_paths.debug_log(f"[RPA] Row: {row}")
     if os.path.exists(csv_path):
         with open(csv_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(row)
+            f.flush()
+            os.fsync(f.fileno())
     else:
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["name", "payment_amount", "payment_type", "status"])
             writer.writerow(row)
+            f.flush()
+            os.fsync(f.fileno())
+    app_paths.debug_log(f"[RPA] Saved OK, size: {os.path.getsize(csv_path)} bytes")
     clear_processing_status()
     return
 
@@ -70,7 +77,7 @@ def get_owed_taksit(taksit_owed):
                 # Remove brackets and split by comma
                 cleaned_row = row.strip("[]")
                 parts = [p.strip() for p in cleaned_row.split(',')]
-                
+
                 # The amount is usually at index 2: [Type, Date, Amount, ...]
                 if len(parts) >= 3:
                     amount_str = parts[2]
@@ -82,6 +89,23 @@ def get_owed_taksit(taksit_owed):
                 print(f"Error parsing taksit row: {row} - {e}")
                 continue
     return None
+
+def get_total_owed_taksit(taksit_owed):
+    """Sum all owed taksit amounts."""
+    total = 0
+    for row in taksit_owed:
+        if "TAKSİT" in row and "ÖDEDİ" not in row:
+            try:
+                cleaned_row = row.strip("[]")
+                parts = [p.strip() for p in cleaned_row.split(',')]
+                if len(parts) >= 3:
+                    amount_str = parts[2]
+                    amount_float = float(amount_str.replace('.', '').replace(',', '.'))
+                    total += amount_float
+            except Exception as e:
+                print(f"Error parsing taksit row for sum: {row} - {e}")
+                continue
+    return int(total)
 tr = Locale("tr")
 def turkish_pattern_check(text):
     texter = str(UnicodeString(text).toUpper(Locale("tr")))
@@ -617,10 +641,10 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             return payment_types, cached_data
         elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
             print(f"Logic: {payment_amount} -> YAZILI SINAV HARCI (BORC ODENMIS)")
-            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS", payment_amount])
+            payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS YAZILI SINAV", payment_amount])
             return payment_types, cached_data
         else:
-            payment_types.append(["YAZILI SINAV HARCI", "BORC YOK", payment_amount])
+            payment_types.append(["YAZILI SINAV HARCI", "BORC ACILMAMIS YAZILI SINAV", payment_amount])
             return payment_types, cached_data
     if payment_amount == 1600 or payment_amount == 1350:
         # Check OWED first with exact amount match - person may have retaken exam after failing
@@ -630,10 +654,10 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             return payment_types, cached_data
         elif check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
             print(f"Logic: {payment_amount} -> UYGULAMA SINAV HARCI (BORC ODENMIS)")
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS", payment_amount])
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS UYGULAMA SINAV", payment_amount])
             return payment_types, cached_data
         else:
-            payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK", payment_amount])
+            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ACILMAMIS UYGULAMA SINAV", payment_amount])
             return payment_types, cached_data
 
     if payment_amount == 4000 and check_owed("BAŞARISIZ ADAY EĞİTİMİ", payment_owed):
@@ -778,6 +802,37 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
         
         elif payment_copy > 4000 and check_owed("TAKSİT", payments_taksit_owed) and get_owed_taksit(payments_taksit_owed) >= payment_copy and not check_date_if_paid(date_of_payment, payments_taksit_paid):
             payment_types.append(["TAKSİT", "BORC VAR"])
+
+        # Handle payment = sinav + taksit where sinav borc not opened yet
+        # e.g. 8200 = 1200 (yazili) + 7000 (taksit sum), or 8600 = 1600 (uygulama) + 7000 (taksit sum)
+        elif check_owed("TAKSİT", payments_taksit_owed):
+            total_taksit = get_total_owed_taksit(payments_taksit_owed)
+            if total_taksit > 0:
+                # Check YAZILI SINAV (1200 or 900) - only if remainder divisible by 500
+                for yazili_amount in [1200, 900]:
+                    x = payment_copy - yazili_amount
+                    if x > 0 and x <= total_taksit and x % 500 == 0:
+                        print(f"Logic: {payment_copy} = {yazili_amount} (YAZILI) + {x} (TAKSİT)")
+                        payment_types.append(["TAKSİT", "BORC VAR"])
+                        payment_types.append(["YAZILI SINAV HARCI", "BORC ACILMAMIS YAZILI SINAV"])
+                        break
+                # Check UYGULAMA SINAV (1600 or 1350) if no match yet - only if remainder divisible by 500
+                if not payment_types:
+                    for uygulama_amount in [1600, 1350]:
+                        x = payment_copy - uygulama_amount
+                        if x > 0 and x <= total_taksit and x % 500 == 0:
+                            print(f"Logic: {payment_copy} = {uygulama_amount} (UYGULAMA) + {x} (TAKSİT)")
+                            payment_types.append(["TAKSİT", "BORC VAR"])
+                            payment_types.append(["UYGULAMA SINAV HARCI", "BORC ACILMAMIS UYGULAMA SINAV"])
+                            break
+                # If no sinav match, check if payment <= total taksit
+                if not payment_types:
+                    if payment_copy <= total_taksit:
+                        print(f"Logic: {payment_copy} <= {total_taksit} (TAKSİT sum)")
+                        payment_types.append(["TAKSİT", "BORC VAR"])
+                    else:
+                        print(f"Logic: {payment_copy} > {total_taksit} - no matching debt")
+                        payment_types.append(["BILINMIYOR", "HIC ACIK BORC YOK: ODEME TUTARI TOTAL BORCLARDAN FAZLA"])
 
     return payment_types, cached_data
 

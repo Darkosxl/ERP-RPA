@@ -459,7 +459,12 @@
 
                 // Show completed payments
                 for (const p of data.payments) {
-                    const isFlagged = p.status && p.status.includes('FLAG');
+                    const isFlagged = p.status && (
+                        p.status.includes('FLAG') ||
+                        p.status.includes('BORC ACILMAMIS') ||
+                        p.status.includes('BORC ODENMIS') ||
+                        p.status.includes('HIC ACIK BORC YOK')
+                    );
                     const rowClass = isFlagged ? 'flagged' : 'PAID';
                     const icon = isFlagged ? '🔴' : '🟢';
                     html += `<tr class="${rowClass}">

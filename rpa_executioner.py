@@ -264,6 +264,36 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
                         save_payment_record([name_surname, payment_entered, info[0], "BORC ODENMIS"])
                         print(f"Already paid for {info[0]}, skipping")
 
+                    if info[1] == "BORC ACILMAMIS YAZILI SINAV":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "BORC ACILMAMIS YAZILI SINAV"])
+                        print(f"Debt not opened for YAZILI SINAV, flagging")
+
+                    if info[1] == "BORC ACILMAMIS UYGULAMA SINAV":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "BORC ACILMAMIS UYGULAMA SINAV"])
+                        print(f"Debt not opened for UYGULAMA SINAV, flagging")
+
+                    if info[1] == "BORC ODENMIS YAZILI SINAV":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "BORC ODENMIS YAZILI SINAV"])
+                        print(f"Already paid for YAZILI SINAV, flagging")
+
+                    if info[1] == "BORC ODENMIS UYGULAMA SINAV":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "BORC ODENMIS UYGULAMA SINAV"])
+                        print(f"Already paid for UYGULAMA SINAV, flagging")
+
+                    if info[1] == "HIC ACIK BORC YOK: ODEME TUTARI TOTAL BORCLARDAN FAZLA":
+                        payment_entered = total_paid
+                        update_processing_status(name_surname, "flagged", info[0], payment_entered)
+                        save_payment_record([name_surname, payment_entered, info[0], "HIC ACIK BORC YOK: ODEME TUTARI TOTAL BORCLARDAN FAZLA"])
+                        print(f"Payment exceeds total debt, flagging")
+
                     if info[1] == "BORC VAR":
 
                         if info[0] == "UYGULAMA SINAV HARCI":
@@ -311,7 +341,7 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
                             payment_entered = total_paid
                             total_paid -= total_paid
                         update_processing_status(name_surname, "almost_completed", info[0], payment_entered)
-                        save_payment_record([name_surname, payment_entered, info[0], "PAID"])
+                        save_payment_record([name_surname, payment_entered, info[0], "ODENDI"])
                         print("round done")
                     #elif info[1] == "BORC YOK":
                     #    golden_PaymentOwed(page, info[0], payment_information[1][i])

@@ -45,3 +45,17 @@ def uploads_dir():
 def get_upload_path(filename):
     """Get full path for an uploaded file."""
     return os.path.join(uploads_dir(), filename)
+
+def debug_log_path():
+    return get_data_path("debug.log")
+
+def debug_log(message):
+    """Write debug message to log file with timestamp - works across processes"""
+    from datetime import datetime
+    try:
+        with open(debug_log_path(), "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] {message}\n")
+            f.flush()
+            os.fsync(f.fileno())
+    except:
+        pass

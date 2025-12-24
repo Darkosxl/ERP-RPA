@@ -319,6 +319,71 @@ def reply_whatsapp():
 def health():
     return "200 OK"
 
+@app.route("/debug-paths", methods=["GET"])
+def debug_paths():
+    """Debug endpoint to check file paths on different platforms"""
+    import platform
+    csv_path = app_paths.payments_csv_path()
+    status_file_path = app_paths.status_path()
+
+    # Log from Flask side
+    app_paths.debug_log(f"[FLASK] /debug-paths called, csv_path={csv_path}")
+
+    debug_info = {
+        "platform": sys.platform,
+        "platform_details": platform.platform(),
+        "app_data_dir": app_paths.get_app_data_dir(),
+        "csv_path": csv_path,
+        "csv_exists": os.path.exists(csv_path),
+        "status_path": status_file_path,
+        "status_exists": os.path.exists(status_file_path),
+    }
+
+    # Try to read file sizes if they exist
+    if os.path.exists(csv_path):
+        debug_info["csv_size"] = os.path.getsize(csv_path)
+        try:
+            with open(csv_path, 'r') as f:
+                debug_info["csv_first_100_chars"] = f.read(100)
+        except Exception as e:
+            debug_info["csv_read_error"] = str(e)
+
+    if os.path.exists(status_file_path):
+        debug_info["status_size"] = os.path.getsize(status_file_path)
+
+    # List files in app data dir
+    try:
+        debug_info["files_in_app_dir"] = os.listdir(app_paths.get_app_data_dir())
+    except Exception as e:
+        debug_info["dir_list_error"] = str(e)
+
+    return jsonify(debug_info)
+
+@app.route("/debug-log", methods=["GET"])
+def debug_log_view():
+    """View the debug log file"""
+    log_path = app_paths.debug_log_path()
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, 'r') as f:
+                content = f.read()
+            return f"<pre>{content}</pre>"
+        except Exception as e:
+            return f"Error reading log: {e}"
+    else:
+        return f"No debug log found at {log_path}"
+
+@app.route("/debug-log/clear", methods=["POST"])
+def debug_log_clear():
+    """Clear the debug log"""
+    log_path = app_paths.debug_log_path()
+    try:
+        if os.path.exists(log_path):
+            os.remove(log_path)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 @app.route("/status", methods=["GET"])
 def status():
     result = {
@@ -326,18 +391,23 @@ def status():
         "current": None
     }
 
-    if os.path.exists(app_paths.payments_csv_path()):
+    csv_path = app_paths.payments_csv_path()
+    status_file_path = app_paths.status_path()
+
+    if os.path.exists(csv_path):
         try:
-            df = pd.read_csv(app_paths.payments_csv_path())
+            df = pd.read_csv(csv_path)
             result["payments"] = df.to_dict(orient="records")
-        except:
-            pass
-    if os.path.exists(app_paths.status_path()):
+        except Exception as e:
+            print(f"[STATUS] Error reading CSV {csv_path}: {e}")
+
+    if os.path.exists(status_file_path):
         try:
-            with open(app_paths.status_path(), "r") as f:
+            with open(status_file_path, "r") as f:
                 result["current"] = json.load(f)
-        except:
-            pass
+        except Exception as e:
+            print(f"[STATUS] Error reading status {status_file_path}: {e}")
+
     return jsonify(result)
 
 @app.route("/whiteboard", methods=["GET"])

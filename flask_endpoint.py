@@ -12,7 +12,7 @@ import os
 import signal
 import pandas as pd
 import rpa_executioner as rpaexec
-from rpa_helper import infer_payment_type_from_amount, clear_processing_status
+from rpa_helper import infer_payment_type_from_amount, clear_processing_status, clear_all_rpa_data
 import app_paths
 import threading
 import multiprocessing
@@ -397,7 +397,8 @@ def status():
     if os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
-            result["payments"] = df.to_dict(orient="records")
+            # Replace NaN with None for valid JSON (NaN is not valid JSON)
+            result["payments"] = df.where(pd.notnull(df), None).to_dict(orient="records")
         except Exception as e:
             print(f"[STATUS] Error reading CSV {csv_path}: {e}")
 
@@ -532,8 +533,8 @@ def start_rpa():
     if current_rpa_process and current_rpa_process.is_alive():
         return jsonify({"error": "RPA is already running. Stop it first."}), 400
 
-    # Clear old status before starting
-    clear_processing_status()
+    # Clear old status AND payments CSV before starting a new run
+    clear_all_rpa_data()
 
     # Start background RPA using multiprocessing (so it can be terminated)
     current_rpa_process = multiprocessing.Process(target=run_rpa_ui_process, args=(current_uploaded_file, son_kasa_miktari))

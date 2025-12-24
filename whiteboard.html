@@ -459,19 +459,24 @@
 
                 // Show completed payments
                 for (const p of data.payments) {
-                    const isFlagged = p.status && (
-                        p.status.includes('FLAG') ||
-                        p.status.includes('BORC ACILMAMIS') ||
-                        p.status.includes('BORC ODENMIS') ||
-                        p.status.includes('HIC ACIK BORC YOK')
+                    // Anything that is NOT paid should be red
+                    // Only green if status contains ODENDI or PAID (and payment_type exists)
+                    const isPaid = p.payment_type && p.status && (
+                        p.status.includes('ODENDI') ||
+                        p.status.includes('PAID')
                     );
+                    const isFlagged = !isPaid;
                     const rowClass = isFlagged ? 'flagged' : 'PAID';
                     const icon = isFlagged ? '🔴' : '🟢';
+
+                    // Clean up display (show - instead of null)
+                    const displayType = p.payment_type || '-';
+
                     html += `<tr class="${rowClass}">
                         <td>${p.name}</td>
                         <td>${p.payment_amount}</td>
-                        <td>${p.payment_type}</td>
-                        <td>${p.status}</td>
+                        <td>${displayType}</td>
+                        <td>${p.status || '-'}</td>
                         <td>${icon}</td>
                     </tr>`;
                 }

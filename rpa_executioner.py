@@ -356,10 +356,10 @@ async def RPAexecutioner_GoldenProcessStart(filename=None, sheetname=None, son_k
                 try:
                     # Try to get name for error record (may fail if error was in get_human_name)
                     error_name = name_surname if 'name_surname' in dir() else str(payment_information[0][i])
-                    update_processing_status(error_name, "failed", None, payment_information[1][i])
-                    save_payment_record([error_name, payment_information[1][i], "NA", f"ERROR: {error_msg[:50]}"])
+                    update_processing_status(error_name, "flagged", None, payment_information[1][i])
+                    save_payment_record([error_name, payment_information[1][i], "NA", "FLAG 404: İSİM BULUNAMADI"])
                 except:
-                    save_payment_record(["UNKNOWN", payment_information[1][i], "NA", f"ERROR: {error_msg[:50]}"])
+                    save_payment_record(["UNKNOWN", payment_information[1][i], "NA", "FLAG 404: İSİM BULUNAMADI"])
                 # Reset search state and continue to next person
                 search_new_person = True
                 current_cache = None

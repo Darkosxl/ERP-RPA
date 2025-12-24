@@ -33,9 +33,18 @@ Rules:
 6. If no valid names are found, output empty list: []
 """
 def clear_processing_status():
+    """Clear just the status file (called after each payment save)."""
     status_file = app_paths.status_path()
     if os.path.exists(status_file):
         os.remove(status_file)
+
+def clear_all_rpa_data():
+    """Clear both status and payments CSV - call only at start of new RPA run."""
+    clear_processing_status()
+    csv_file = app_paths.payments_csv_path()
+    if os.path.exists(csv_file):
+        os.remove(csv_file)
+        print(f"Cleared old payments CSV: {csv_file}")
 
 def update_processing_status(name, stage, payment_type=None, payment_amount=None):
     # Stages:'processing', 'almost_completed', 'completed', 'flagged'
@@ -660,6 +669,35 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             payment_types.append(["UYGULAMA SINAV HARCI", "BORC ACILMAMIS UYGULAMA SINAV", payment_amount])
             return payment_types, cached_data
 
+    # 1000 TL payments - BELGE ÜCRETİ logic
+    if payment_amount == 1000:
+        # 1) If BELGE ÜCRETİ is OWED → pay it
+        if check_owed("BELGE ÜCRETİ", payment_owed):
+            print(f"Logic: {payment_amount} -> BELGE ÜCRETİ (BORC VAR)")
+            payment_types.append(["BELGE ÜCRETİ", "BORC VAR", payment_amount])
+            return payment_types, cached_data
+        # 2) If BELGE ÜCRETİ is PAID
+        elif check_paid("BELGE ÜCRETİ", payments_paid):
+            # Check if there's taksit owed that's >= 1000
+            total_taksit_owed = get_total_owed_taksit(payments_taksit_owed) if payments_taksit_owed else 0
+            if total_taksit_owed >= 1000:
+                print(f"Logic: {payment_amount} -> TAKSİT (BELGE paid, TAKSİT owed >= 1000)")
+                payment_types.append(["TAKSİT", "BORC VAR", payment_amount])
+                return payment_types, cached_data
+            # Check if taksit paid on same date
+            elif check_date_if_paid(date_of_payment, payments_taksit_paid):
+                print(f"Logic: {payment_amount} -> TAKSİT (BELGE paid, TAKSİT paid same date)")
+                payment_types.append(["TAKSİT", "BORC ODENMIS", payment_amount])
+                return payment_types, cached_data
+            else:
+                print(f"Logic: {payment_amount} -> BELGE ÜCRETİ (BORC ODENMIS)")
+                payment_types.append(["BELGE ÜCRETİ", "BORC ODENMIS", payment_amount])
+                return payment_types, cached_data
+        # 3) No BELGE ÜCRETİ paid or owed → BORC YOK
+        else:
+            print(f"Logic: {payment_amount} -> BELGE ÜCRETİ BORC YOK")
+            payment_types.append(["BELGE ÜCRETİ", "BORC YOK", payment_amount])
+            return payment_types, cached_data
     if payment_amount == 4000 and check_owed("BAŞARISIZ ADAY EĞİTİMİ", payment_owed):
         payment_types.append(["BAŞARISIZ ADAY EĞİTİMİ", "BORC VAR"])
         return payment_types, cached_data
@@ -697,6 +735,64 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
             payment_types.append(["TAKSİT", "BORC ODENMIS"])
         return payment_types, cached_data
     
+    # HIGH TAKSIT + SINAV COMBOS (check before complex modulo logic)
+    # This handles payments like 8200 = 1200 (YAZILI) + 7000 (TAKSİT)
+    if payment_copy > 1600:
+        total_taksit_owed = get_total_owed_taksit(payments_taksit_owed)
+        total_taksit_paid = get_total_owed_taksit(payments_taksit_paid) if payments_taksit_paid else 0
+        
+        # Try YAZILI SINAV combos (1200, 900)
+        for yazili_amount in [1200, 900]:
+            remainder = payment_copy - yazili_amount
+            if remainder > 0 and remainder % 500 == 0:
+                # Check if YAZILI is owed
+                if check_owed_with_amount("YZL. SNV. HARCI", payment_owed, yazili_amount) or check_owed_with_amount("YAZILI SINAV HARCI", payment_owed, yazili_amount):
+                    if check_owed_with_amount(None, payments_taksit_owed, remainder) or remainder <= total_taksit_owed:
+                        print(f"Logic: {payment_copy} = {yazili_amount} (YAZILI OWED) + {remainder} (TAKSİT)")
+                        payment_types.append(["YAZILI SINAV HARCI", "BORC VAR", yazili_amount])
+                        payment_types.append(["TAKSİT", "BORC VAR", remainder])
+                        return payment_types, cached_data
+                # Check if YAZILI is already paid
+                elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
+                    # Check if taksit is owed
+                    if check_owed_with_amount(None, payments_taksit_owed, remainder) or remainder <= total_taksit_owed:
+                        print(f"Logic: {payment_copy} = {yazili_amount} (YAZILI PAID) + {remainder} (TAKSİT OWED)")
+                        payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS", yazili_amount])
+                        payment_types.append(["TAKSİT", "BORC VAR", remainder])
+                        return payment_types, cached_data
+                    # Check if taksit already paid on same date
+                    elif check_date_if_paid(date_of_payment, payments_taksit_paid):
+                        print(f"Logic: {payment_copy} = {yazili_amount} (YAZILI PAID) + {remainder} (TAKSİT PAID)")
+                        payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS", yazili_amount])
+                        payment_types.append(["TAKSİT", "BORC ODENMIS", remainder])
+                        return payment_types, cached_data
+        
+        # Try UYGULAMA SINAV combos (1600, 1350)
+        for uygulama_amount in [1600, 1350]:
+            remainder = payment_copy - uygulama_amount
+            if remainder > 0 and remainder % 500 == 0:
+                # Check if UYGULAMA is owed
+                if check_owed_with_amount("UYG. SNV. HARCI", payment_owed, uygulama_amount) or check_owed_with_amount("UYGULAMA SINAV HARCI", payment_owed, uygulama_amount):
+                    if check_owed_with_amount(None, payments_taksit_owed, remainder) or remainder <= total_taksit_owed:
+                        print(f"Logic: {payment_copy} = {uygulama_amount} (UYGULAMA OWED) + {remainder} (TAKSİT)")
+                        payment_types.append(["UYGULAMA SINAV HARCI", "BORC VAR", uygulama_amount])
+                        payment_types.append(["TAKSİT", "BORC VAR", remainder])
+                        return payment_types, cached_data
+                # Check if UYGULAMA is already paid
+                elif check_paid("UYG. SNV. HARCI", payments_paid) or check_paid("UYGULAMA SINAV HARCI", payments_paid):
+                    # Check if taksit is owed
+                    if check_owed_with_amount(None, payments_taksit_owed, remainder) or remainder <= total_taksit_owed:
+                        print(f"Logic: {payment_copy} = {uygulama_amount} (UYGULAMA PAID) + {remainder} (TAKSİT OWED)")
+                        payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS", uygulama_amount])
+                        payment_types.append(["TAKSİT", "BORC VAR", remainder])
+                        return payment_types, cached_data
+                    # Check if taksit already paid on same date
+                    elif check_date_if_paid(date_of_payment, payments_taksit_paid):
+                        print(f"Logic: {payment_copy} = {uygulama_amount} (UYGULAMA PAID) + {remainder} (TAKSİT PAID)")
+                        payment_types.append(["UYGULAMA SINAV HARCI", "BORC ODENMIS", uygulama_amount])
+                        payment_types.append(["TAKSİT", "BORC ODENMIS", remainder])
+                        return payment_types, cached_data
+
     #COMPLEX PAYMENTS
     if payment_copy > 1600:
         
@@ -736,16 +832,17 @@ async def get_payment_type(page, name_surname, payment_amount, date_of_payment, 
                 payment_types.append(["TAKSİT", "BORC ODENMIS"])
             elif check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["UYGULAMA SINAV HARCI", "BORC YOK"])
-        elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 != 4000 and (check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed) or check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):    
+        elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 != 4000 and (check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed) or check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)):
+            remainder = payment_copy - 1200  # Actual taksit amount
             if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC VAR"])
-                payment_types.append(["DORTBIN", "FLAG: 4000"])
+                payment_types.append(["TAKSİT", "FLAG: BORC VAR", remainder])
             elif check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid):
                 payment_types.append(["YAZILI SINAV HARCI", "BORC ODENMIS"])
-                payment_types.append(["DORTBIN", "BORC ODENMIS"])
+                payment_types.append(["TAKSİT", "BORC ODENMIS", remainder])
             else:
                 payment_types.append(["YAZILI SINAV HARCI", "BORC YOK"])
-                payment_types.append(["DORTBIN", "FLAG: 4000"])
+                payment_types.append(["TAKSİT", "FLAG: BILINMIYOR", remainder])
 
         elif (payment_copy - 1200)%500 == 0 and payment_copy - 1200 == 4000 and (check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed) or check_paid("YZL. SNV. HARCI", payments_paid) or check_paid("YAZILI SINAV HARCI", payments_paid)) and check_owed_with_amount(None, payments_taksit_owed, 4000):
             if check_owed("YZL. SNV. HARCI", payment_owed) or check_owed("YAZILI SINAV HARCI", payment_owed):
